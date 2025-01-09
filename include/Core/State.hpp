@@ -73,12 +73,12 @@ struct State {
     a.setZero();
 
     // Control signal noise (never changes)
-	  Q.setZero();
+    Q.setZero();
  
-	  Q.block<3, 3>(0, 0) = cfg.ikfom.covariance.gyro * Eigen::Matrix3d::Identity();       // n_w
-	  Q.block<3, 3>(3, 3) = cfg.ikfom.covariance.accel * Eigen::Matrix3d::Identity();      // n_a
-	  Q.block<3, 3>(6, 6) = cfg.ikfom.covariance.bias_gyro * Eigen::Matrix3d::Identity();  // n_{b_w}
-	  Q.block<3, 3>(9, 9) = cfg.ikfom.covariance.bias_accel * Eigen::Matrix3d::Identity(); // n_{b_a}
+    Q.block<3, 3>(0, 0) = cfg.ikfom.covariance.gyro * Eigen::Matrix3d::Identity();       // n_w
+    Q.block<3, 3>(3, 3) = cfg.ikfom.covariance.accel * Eigen::Matrix3d::Identity();      // n_a
+    Q.block<3, 3>(6, 6) = cfg.ikfom.covariance.bias_gyro * Eigen::Matrix3d::Identity();  // n_{b_w}
+    Q.block<3, 3>(9, 9) = cfg.ikfom.covariance.bias_accel * Eigen::Matrix3d::Identity(); // n_{b_a}
   } 
 
   void predict(const Imu& imu, const double& dt) {
@@ -110,7 +110,7 @@ PROFC_NODE("predict")
 
   void predict(const double& t) {
     double dt = t - this->stamp;
-		assert(dt >= 0);
+    assert(dt >= 0);
     
     Tangent u = Tangent::Zero();
     u.element<0>().coeffs() = v();
@@ -276,18 +276,18 @@ PROFC_NODE("update")
 
       P = J.inverse() * P_predicted * J.inverse().transpose();
 
-			Matrix12d HTH = H.transpose() * H / R;
-			Matrix24d P_inv = P.inverse();
-			P_inv.block<12, 12>(0, 0) += HTH;
-			P_inv = P_inv.inverse();
+      Matrix12d HTH = H.transpose() * H / R;
+      Matrix24d P_inv = P.inverse();
+      P_inv.block<12, 12>(0, 0) += HTH;
+      P_inv = P_inv.inverse();
 
-			Vector24d Kz = Vector24d::Zero(); 
+      Vector24d Kz = Vector24d::Zero(); 
       Kz = P_inv.block<24, 12>(0, 0) * H.transpose() * z / R;
 
       KH.setZero();
-			KH.block<24, 12>(0, 0) = P_inv.block<24, 12>(0, 0) * HTH;
+      KH.block<24, 12>(0, 0) = P_inv.block<24, 12>(0, 0) * HTH;
 
-			dx = Kz + (KH - Matrix24d::Identity()) * J.inverse() * dx; 
+      dx = Kz + (KH - Matrix24d::Identity()) * J.inverse() * dx; 
       X = X.plus(dx);
 
       if ((dx.coeffs().array().abs() <= cfg.ikfom.tolerance).all())

@@ -13,57 +13,6 @@
 #include <iomanip> 
 #include <type_traits>
 
-// Helper to check if a type is printable with std::cout
-template <typename T, typename = void>
-struct is_printable : std::false_type {};
-
-template <typename T>
-struct is_printable<T, std::void_t<decltype(std::cout << std::declval<T>())>> : std::true_type {};
-
-// Helper to check if a type is iterable
-template <typename T, typename = void>
-struct is_iterable : std::false_type {};
-
-template <typename T>
-struct is_iterable<T, std::void_t<decltype(std::begin(std::declval<T>())), decltype(std::end(std::declval<T>()))>> : std::true_type {};
-
-// Generic print function for printable objects
-template <typename T>
-typename std::enable_if<is_printable<T>::value && !is_iterable<T>::value>::type
-print(const T& value, int precision = 3) {
-    std::cout << std::fixed << std::setprecision(precision) << value << std::endl;
-    std::cout.unsetf(std::ios::fixed);
-    std::cout.precision(6); // Restore default
-}
-
-// Print function for iterable containers
-template <typename Container>
-typename std::enable_if<is_iterable<Container>::value>::type
-print(const Container& container, int precision = 3) {
-    std::cout << "[";
-    bool first = true;
-    for (const auto& element : container) {
-        if (!first) std::cout << ", ";
-        first = false;
-        print(element, precision); // Recursively print elements
-    }
-    std::cout << "]" << std::endl;
-}
-
-// Specialization for Eigen matrices/vectors
-template <typename Derived>
-void print(const Eigen::MatrixBase<Derived>& matrix, int precision = 3) {
-    std::cout << std::fixed << std::setprecision(precision) << matrix << std::endl;
-    std::cout.unsetf(std::ios::fixed);
-    std::cout.precision(6); // Restore default
-}
-
-// Fallback for unsupported types
-template <typename T>
-typename std::enable_if<!is_printable<T>::value && !is_iterable<T>::value>::type
-print(const T&, int = 3) {
-    std::cerr << "Error: Type is not printable!" << std::endl;
-}
 
 struct Config {
 
