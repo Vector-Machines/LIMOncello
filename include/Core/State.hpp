@@ -17,7 +17,7 @@
 
 
 #include <manif/manif.h>
-#include <manif/SO3.h>
+#include <manif/SE3.h>
 #include <manif/Bundle.h>
 #include <manif/Rn.h>
 
@@ -27,13 +27,13 @@ struct State {
   using Matrix24d = Eigen::Matrix<double, 24, 24>;
   using Matrix24x12d = Eigen::Matrix<double, 24, 12>;
   using Matrix12d = Eigen::Matrix<double, 12, 12>;
+  using Matrix3x6d = Eigen::Matrix<double, 3, 6>;
+  using Matrix1x6d = Eigen::Matrix<double, 1, 6>;
   using Vector24d = Eigen::Matrix<double, 24, 1>;
 
   using BundleT = manif::Bundle<double,
-      manif::R3,  // position
-      manif::SO3, // rotation
-      manif::SO3, // imu2lidar rotation
-      manif::R3,  // imu2lidar translation
+      manif::SE3, // position & rotation
+      manif::SE3, // imu2lidar position & rotation
       manif::R3,  // velocity
       manif::R3,  // angular bias
       manif::R3,  // acceleartion bias
@@ -55,12 +55,10 @@ struct State {
     Config& cfg = Config::getInstance();
     Eigen::Vector3d zero_vec = Eigen::Vector3d(0., 0., 0.);
 
-    X = BundleT(manif::R3d(zero_vec),
-                manif::SO3d(0., 0., 0., 1.),
-                manif::SO3d(cfg.sensors.extrinsics.lidar2baselink.roll,
-                            cfg.sensors.extrinsics.lidar2baselink.pitch,
-                            cfg.sensors.extrinsics.lidar2baselink.yaw),
-                manif::R3d(zero_vec),
+    X = BundleT(manif::SE3d(0., 0., 0., 0., 0., 0.), // x, y, z, roll, pitch, yaw
+                manif::SE3d(0., 0., 0, cfg.sensors.extrinsics.lidar2baselink.roll,
+                                       cfg.sensors.extrinsics.lidar2baselink.pitch,
+                                       cfg.sensors.extrinsics.lidar2baselink.yaw),
                 manif::R3d(zero_vec),
                 manif::R3d(zero_vec),
                 manif::R3d(zero_vec),
@@ -86,11 +84,10 @@ PROFC_NODE("predict")
 
     // UPDATE STATE
     Tangent u = Tangent::Zero();
-    u.element<0>().coeffs() = v();
-    u.element<1>().coeffs() = imu.ang_vel - b_w() /* -n_w */;
-    u.element<4>().coeffs() = R() * (imu.lin_accel - b_a() /* -n_a */) + g();
-    // u.element<5>().coeffs() = n_{b_w} 
-    // u.element<6>().coeffs() = n_{b_a}
+    u.element<0>().coeffs() << v(), imu.ang_vel - b_w() /* -n_w */;
+    u.element<2>().coeffs() = R() * (imu.lin_accel - b_a() /* -n_a */) + g();
+    // u.element<3>().coeffs() = n_{b_w} 
+    // u.element<4>().coeffs() = n_{b_a}
 
     Matrix24d Gx, Gf; // Adjoint_X(u)^{-1}, J_r(u)  Sola-18, [https://arxiv.org/abs/1812.01537]
     X = X.plus(u * dt, Gx, Gf);
@@ -113,9 +110,8 @@ PROFC_NODE("predict")
     assert(dt >= 0);
     
     Tangent u = Tangent::Zero();
-    u.element<0>().coeffs() = v();
-    u.element<1>().coeffs() = w - b_w() /* -n_w */;
-    u.element<4>().coeffs() = R() * (a - b_a() /* -n_a */) + g();
+    u.element<0>().coeffs() << v(), w - b_w() /* -n_w */;
+    u.element<2>().coeffs() = R() * (a - b_a() /* -n_a */) + g();
     X = X.plus(u * dt);
   }
   
@@ -232,21 +228,28 @@ PROFC_NODE("update")
         indices.end(),
         [&](int i) {
           Match match = first_matches[i];
-          Eigen::Vector3f p_imu   = s.affine3f().inverse() * match.global;
-          Eigen::Vector3f p_lidar = s.I2L_affine3f().inverse() * p_imu;
+          Eigen::Vector3d p_lidar = match.local.cast<double>();
+          Eigen::Vector3d p_imu   = (s.I2L_affine3f() * match.local).cast<double>();
 
-          // Set correct dimensions
-          Eigen::Vector3f n = match.n.head(3);
+          // Normal vector to plane
+          Eigen::Vector3d n = match.n.head(3).cast<double>();
 
-          // Calculate measurement Jacobian H (:= dh/dx)
-          Eigen::Vector3f C = s.R().transpose().cast<float>() * n;
-          Eigen::Vector3f B = p_lidar.cross(s.I2L_R().transpose().cast<float>() * C);
-          Eigen::Vector3f A = p_imu.cross(C);
-          
-          H.block<1, 6>(i, 0) << n(0), n(1), n(2), A(0), A(1), A(2);
+          // Jacobian of SE3 act.
+          Matrix3x6d J_s; // Jacobian of state (pos., rot.)
+          s.X.element<0>().act(p_imu, J_s);
 
-          if (cfg.ikfom.estimate_extrinsics)
-            H.block<1, 6>(i, 6) << B(0), B(1), B(2), C(0), C(1), C(2);
+          Matrix1x6d A = n.transpose() * J_s; 
+
+          H.block<1, 6>(i, 0) << A(0), A(1), A(2), A(3), A(4), A(5);
+
+          if (cfg.ikfom.estimate_extrinsics) {
+            Matrix3x6d J_e; // Jacobian of extrinsics (pos., rot.)
+            s.X.element<1>().act(p_lidar, J_e);
+
+            Matrix1x6d B = n.transpose() * s.R() * J_e;
+
+            H.block<1, 6>(i, 6) << B(0), B(1), B(2), B(3), B(4), B(5);
+          }
 
           z(i) = -match.dist2plane();
         }
@@ -301,47 +304,35 @@ PROFC_NODE("update")
 
 
 // Getters
-  inline Eigen::Vector3d p()       const { return X.element<0>().coeffs();   }
-  inline Eigen::Matrix3d R()       const { return X.element<1>().rotation(); }
-  inline Eigen::Quaterniond quat() const { return X.element<1>().quat();     }
-  inline Eigen::Matrix3d I2L_R()   const { return X.element<2>().rotation(); }
-  inline Eigen::Vector3d I2L_t()   const { return X.element<3>().coeffs();   }
-  inline Eigen::Vector3d v()       const { return X.element<4>().coeffs();   }
-  inline Eigen::Vector3d b_w()     const { return X.element<5>().coeffs();   }
-  inline Eigen::Vector3d b_a()     const { return X.element<6>().coeffs();   }
-  inline Eigen::Vector3d g()       const { return X.element<7>().coeffs();   }
+  inline Eigen::Vector3d p()       const { return X.element<0>().translation();             }
+  inline Eigen::Matrix3d R()       const { return X.element<0>().quat().toRotationMatrix(); }
+  inline Eigen::Quaterniond quat() const { return X.element<0>().quat();                    }
+  inline Eigen::Matrix3d I2L_R()   const { return X.element<1>().quat().toRotationMatrix(); }
+  inline Eigen::Vector3d I2L_t()   const { return X.element<1>().translation();             }
+  inline Eigen::Vector3d v()       const { return X.element<2>().coeffs();                  }
+  inline Eigen::Vector3d b_w()     const { return X.element<3>().coeffs();                  }
+  inline Eigen::Vector3d b_a()     const { return X.element<4>().coeffs();                  }
+  inline Eigen::Vector3d g()       const { return X.element<5>().coeffs();                  }
 
   inline Eigen::Affine3f affine3f() const {
-    Eigen::Affine3d transform = Eigen::Affine3d::Identity();
-
-    transform.linear() = R();
-    transform.translation() = p();
-
-    return transform.cast<float>();
+    return Eigen::Affine3f(X.element<0>().transform().cast<float>().eval());
   }
 
   inline Eigen::Affine3f I2L_affine3f() const {
-    Eigen::Affine3d transform = Eigen::Affine3d::Identity();
-
-    transform.linear() = I2L_R();
-    transform.translation() = I2L_t();
-
-    return transform.cast<float>();
+    return Eigen::Affine3f(X.element<1>().transform().cast<float>().eval());
   }
 
 // Setters
   // Eigen::Vector3d p()     { return X.element<0>.coeffs();   }
   // Eigen::Vector3d R()     { return X.element<1>.rotation(); }
-  void quat(const Eigen::Quaterniond& q) { X.element<1>() = manif::SO3d(q); }
+  void quat(const Eigen::Quaterniond& q) { X.element<0>().quat(q); }
 
   // Eigen::Vector3d I2L_R() { return X.element<2>.rotation(); }
   // Eigen::Vector3d I2L_t() { return X.element<3>.coeffs();   }
   // Eigen::Vector3d v()     { return X.element<4>.coeffs();   }
-  void b_w(const Eigen::Vector3d& in) { X.element<5>() = manif::R3d(in); }
-  void b_a(const Eigen::Vector3d& in) { X.element<6>() = manif::R3d(in); }
-  void g(const Eigen::Vector3d& in)   { X.element<7>() = manif::R3d(in); }
-
-  
+  void b_w(const Eigen::Vector3d& in) { X.element<3>() = manif::R3d(in); }
+  void b_a(const Eigen::Vector3d& in) { X.element<4>() = manif::R3d(in); }
+  void g(const Eigen::Vector3d& in)   { X.element<5>() = manif::R3d(in); }
 
 };
 
