@@ -12,7 +12,7 @@ topics:
 
 
 verbose: true   # print performance board
-debug: false     # fill useful intermediate pcl (deskewed, processed ...) 
+debug: true     # fill useful intermediate pcl (deskewed, processed ...) 
                 # for visualizing purposes
 
 sensors:
@@ -24,9 +24,9 @@ sensors:
     hz: 100
 
   calibration:  # automatic IMU calibration (if all set to false, no calibration will be done)
-    gravity_align: false     # estimate gravity vector
-    accel: false             # estimate lin. accel. bias
-    gyro: false              # estimate ang. vel. bias
+    gravity_align: true     # estimate gravity vector
+    accel: true             # estimate lin. accel. bias
+    gyro: true              # estimate ang. vel. bias
     time: 1.5               # time to estimate (during this time, the 
                            # robot must be at stand still)
 

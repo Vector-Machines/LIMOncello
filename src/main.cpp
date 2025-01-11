@@ -127,6 +127,7 @@ public:
   }
 
   void lidar_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
+    return;
 PROFC_NODE("LiDAR Callback")
 
     Config& cfg = Config::getInstance();

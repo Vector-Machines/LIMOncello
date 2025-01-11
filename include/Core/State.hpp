@@ -73,24 +73,17 @@ struct State {
     // Control signal noise (never changes)
     Q.setZero();
  
-    Q.block<3, 3>(0, 0) = cfg.ikfom.covariance.gyro * Eigen::Matrix3d::Identity();       // n_w
-    Q.block<3, 3>(3, 3) = cfg.ikfom.covariance.accel * Eigen::Matrix3d::Identity();      // n_a
-    Q.block<3, 3>(6, 6) = cfg.ikfom.covariance.bias_gyro * Eigen::Matrix3d::Identity();  // n_{b_w}
+    Q.block<3, 3>(0, 0) = cfg.ikfom.covariance.gyro       * Eigen::Matrix3d::Identity(); // n_w
+    Q.block<3, 3>(3, 3) = cfg.ikfom.covariance.accel      * Eigen::Matrix3d::Identity(); // n_a
+    Q.block<3, 3>(6, 6) = cfg.ikfom.covariance.bias_gyro  * Eigen::Matrix3d::Identity(); // n_{b_w}
     Q.block<3, 3>(9, 9) = cfg.ikfom.covariance.bias_accel * Eigen::Matrix3d::Identity(); // n_{b_a}
   } 
 
   void predict(const Imu& imu, const double& dt) {
 PROFC_NODE("predict")
 
-    // UPDATE STATE
-    Tangent u = Tangent::Zero();
-    u.element<0>().coeffs() << v(), imu.ang_vel - b_w() /* -n_w */;
-    u.element<2>().coeffs() = R() * (imu.lin_accel - b_a() /* -n_a */) + g();
-    // u.element<3>().coeffs() = n_{b_w} 
-    // u.element<4>().coeffs() = n_{b_a}
-
     Matrix24d Gx, Gf; // Adjoint_X(u)^{-1}, J_r(u)  Sola-18, [https://arxiv.org/abs/1812.01537]
-    X = X.plus(u * dt, Gx, Gf);
+    X = X.plus(f(imu.lin_accel, imu.ang_vel) * dt, Gx, Gf);
 
     // UPDATE COVARIANCE
     Matrix24d    Fx = Gx + Gf * df_dx(imu) * dt; // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (26)
@@ -105,25 +98,38 @@ PROFC_NODE("predict")
     stamp = imu.stamp;
   }
 
+
   void predict(const double& t) {
     double dt = t - this->stamp;
     assert(dt >= 0);
     
-    Tangent u = Tangent::Zero();
-    u.element<0>().coeffs() << v(), w - b_w() /* -n_w */;
-    u.element<2>().coeffs() = R() * (a - b_a() /* -n_a */) + g();
-    X = X.plus(u * dt);
+    X = X.plus(f(a, w) * dt);
   }
-  
+
+
+  Tangent f(const Eigen::Vector3d& lin_acc, const Eigen::Vector3d& ang_vel) {
+    // UPDATE STATE
+    Tangent u = Tangent::Zero();
+    u.element<0>().coeffs() << lin_acc - b_a() /* -n_a */ + R().transpose() * g(), 
+                               ang_vel - b_w() /* -n_w */;
+    u.element<2>().coeffs() = R() * (lin_acc - b_a() /* -n_a */) + g();
+    // u.element<3>().coeffs() = n_{b_w} 
+    // u.element<4>().coeffs() = n_{b_a}
+
+    return u;
+  }
+
 
   Matrix24d df_dx(const Imu& imu) {
     Matrix24d out = Matrix24d::Zero();
 
-    // position update
-    out.block<3, 3>(0, 12) = Eigen::Matrix3d::Identity(); // w.r.t v
-
-    // rotation update
-    out.block<3, 3>(3, 15) = -Eigen::Matrix3d::Identity(); // w.r.t b_w
+    // twist
+      // velocity
+      out.block<3, 3>( 0,  3) = -R().transpose()*manif::skew(g()) * -R(); // w.r.t R := d(R^-1*g)/dR * d(R^-1)/dR
+      out.block<3, 3>( 0, 18) = -Eigen::Matrix3d::Identity(); // w.r.t b_a
+      out.block<3, 3>( 0, 21) =  R().transpose(); // w.r.t g
+      // angular velocity
+      out.block<3, 3>( 3, 15) = -Eigen::Matrix3d::Identity(); // w.r.t b_w
 
     // velocity update
     out.block<3, 3>(12, 3)  = -R() * manif::skew(imu.lin_accel - b_a()); // w.r.t R
@@ -135,16 +141,20 @@ PROFC_NODE("predict")
 
 
   Matrix24x12d df_dw(const Imu& imu) {
+    // w = (n_w, n_a, n_{b_w}, n_{b_a})
+
     Matrix24x12d out = Matrix24x12d::Zero();
 
-    // rotation update
-    out.block<3, 3>( 3, 0) = -Eigen::Matrix3d::Identity(); // w.r.t n_w
+    // twist
+      out.block<3, 3>( 0, 3) = -Eigen::Matrix3d::Identity(); // w.r.t n_a
+      out.block<3, 3>( 3, 0) = -Eigen::Matrix3d::Identity(); // w.r.t n_w
+
     // velocity update
     out.block<3, 3>(12, 3) = -R(); // w.r.t n_a
     // b_w update
-    out.block<3, 3>(15, 6) =  Eigen::Matrix3d::Identity(); // w.r.t n_{b_w}
+    out.block<3, 3>(15, 6) = Eigen::Matrix3d::Identity(); // w.r.t n_{b_w}
     // b_a update
-    out.block<3, 3>(18, 9) =  Eigen::Matrix3d::Identity(); // w.r.t n_{b_a}
+    out.block<3, 3>(18, 9) = Eigen::Matrix3d::Identity(); // w.r.t n_{b_a}
     
     return out;
   }
@@ -315,11 +325,17 @@ PROFC_NODE("update")
   inline Eigen::Vector3d g()       const { return X.element<5>().coeffs();                  }
 
   inline Eigen::Affine3f affine3f() const {
-    return Eigen::Affine3f(X.element<0>().transform().cast<float>().eval());
+    Eigen::Affine3d T;
+    T.linear() = R();
+    T.translation() = p();
+    return T.cast<float>();
   }
 
   inline Eigen::Affine3f I2L_affine3f() const {
-    return Eigen::Affine3f(X.element<1>().transform().cast<float>().eval());
+    Eigen::Affine3d T;
+    T.linear() = I2L_R();
+    T.translation() = I2L_t();
+    return T.cast<float>();
   }
 
 // Setters
