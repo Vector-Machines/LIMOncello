@@ -10,6 +10,7 @@
 #include <geometry_msgs/Vector3.h>
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/PointCloud2.h>
+#include "std_msgs/Float32.h"
 
 #include "Core/Octree.hpp"
 #include "Core/State.hpp"
@@ -21,7 +22,8 @@
 
 
 ros::Publisher pub_state, pub_frame, pub_raw, 
-               pub_deskewed, pub_downsampled, pub_to_match;
+               pub_deskewed, pub_downsampled, pub_to_match,
+               pub_dt;
 
 
 class Manager {
@@ -122,6 +124,10 @@ public:
       cv_prop_stamp_.notify_one();
 
       pub_state.publish(toROS(state_));
+
+      std_msgs::Float32 msg;
+      msg.data = state_.delta_t();
+      pub_dt.publish(msg);
     }
 
   }
@@ -256,6 +262,8 @@ int main(int argc, char** argv) {
   pub_deskewed    = nh.advertise<sensor_msgs::PointCloud2>("debug/deskewed",    10);
   pub_downsampled = nh.advertise<sensor_msgs::PointCloud2>("debug/downsampled", 10);
   pub_to_match    = nh.advertise<sensor_msgs::PointCloud2>("debug/to_match",    10);
+  pub_dt          = nh.advertise<std_msgs::Float32>("debug/delta_t",            10);
+
 
 
   // Subscribers

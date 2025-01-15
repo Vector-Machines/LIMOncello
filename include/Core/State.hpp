@@ -48,9 +48,9 @@ struct State {
   Eigen::Vector3d w;      // angular velocity (IMU input)
   Eigen::Vector3d a;      // linear acceleration (IMU input)
 
-  double stamp;
+  double stamp, dt_;
 
-  State() : stamp(0.0) { 
+  State() : stamp(0.0), dt_(0.) { 
     Config& cfg = Config::getInstance();
     Eigen::Vector3d zero_vec = Eigen::Vector3d(0., 0., 0.);
 
@@ -95,6 +95,7 @@ PROFC_NODE("predict")
     w = imu.ang_vel;
 
     stamp = imu.stamp;
+    dt_ = dt;
   }
 
 
@@ -109,9 +110,9 @@ PROFC_NODE("predict")
   Tangent f(const Eigen::Vector3d& lin_acc, const Eigen::Vector3d& ang_vel, const double& dt) {
 
     Tangent u = Tangent::Zero();
-    u.element<0>().coeffs() << R().transpose()*v() + 0.5*dt*(lin_acc - b_a() /* -n_a */ + R().transpose()*g()), 
-                               ang_vel - b_w() /* -n_w */,
+    u.element<0>().coeffs() << 0., 0., 0., //R().transpose()*v() + 0.5*dt*(lin_acc - b_a() /* -n_a */ + R().transpose()*g()), 
                                lin_acc - b_a() /* -n_a */ + R().transpose()*g(),
+                               ang_vel - b_w() /* -n_w */,
                                1;
     // u.element<1>().coeffs() = n_{b_w} 
     // u.element<2>().coeffs() = n_{b_a}
@@ -120,39 +121,40 @@ PROFC_NODE("predict")
   }
 
 
-  Matrix18d df_dx(const Imu& imu, const double& dt) {
-    Matrix18d out = Matrix18d::Zero();
+  Matrix19d df_dx(const Imu& imu, const double& dt) {
+    Matrix19d out = Matrix19d::Zero();
 
     // position
-    out.block<3, 3>(0, 3) = -R().transpose()*manif::skew(v()) * -R()   // w.r.t R := d(R^-1*v)/dR * d(R^-1)/dR
-                          + -R().transpose()*manif::skew(g()) * -R() *0.5*dt;  //  + d(R^-1*g)/dR * d(R^-1)/dR
-    out.block<3, 3>(0, 6) = R().transpose(); // w.r.t v
-    out.block<3, 3>(0, 12) = -Eigen::Matrix3d::Identity() * 0.5*dt; // w.r.t b_a
-    out.block<3, 3>(0, 15) = R().transpose() * 0.5*dt; // w.r.t g
-
-    // rotation
-    out.block<3, 3>(3, 9) = -Eigen::Matrix3d::Identity(); // w.r.t b_w
+    // out.block<3, 3>(0, 3) = -R().transpose()*manif::skew(v()) * -R()   // w.r.t R := d(R^-1*v)/dR * d(R^-1)/dR
+                          // + -R().transpose()*manif::skew(g()) * -R() *0.5*dt;  //  + d(R^-1*g)/dR * d(R^-1)/dR
+    // out.block<3, 3>(0, 6) = R().transpose(); // w.r.t v
+    // out.block<3, 3>(0, 12) = -Eigen::Matrix3d::Identity() * 0.5*dt; // w.r.t b_a
+    // out.block<3, 3>(0, 15) = R().transpose() * 0.5*dt; // w.r.t g
 
     // velocity 
-    out.block<3, 3>(6, 12) = -Eigen::Matrix3d::Identity(); // w.r.t b_a 
-    out.block<3, 3>(6, 3) = -R().transpose()*manif::skew(g()) * -R(); // w.r.t R
-    out.block<3, 3>(6, 15) = R().transpose(); // w.r.t g
+    out.block<3, 3>(3, 12) = -Eigen::Matrix3d::Identity(); // w.r.t b_a 
+    out.block<3, 3>(3, 3) = -R().transpose()*manif::skew(g()) * -R(); // w.r.t R
+    out.block<3, 3>(3, 15) = R().transpose(); // w.r.t g
+
+    // rotation
+    out.block<3, 3>(6, 9) = -Eigen::Matrix3d::Identity(); // w.r.t b_w
+
 
 
     return out;
   }
 
 
-  Matrix18x12d df_dw(const Imu& imu, const double& dt) {
+  Matrix19x12d df_dw(const Imu& imu, const double& dt) {
     // w = (n_w, n_a, n_{b_w}, n_{b_a})
 
-    Matrix18x12d out = Matrix18x12d::Zero();
+    Matrix19x12d out = Matrix19x12d::Zero();
 
-    out.block<3, 3>( 0, 3) = -Eigen::Matrix3d::Identity(); // w.r.t n_a
-    out.block<3, 3>( 3, 0) = -Eigen::Matrix3d::Identity(); // w.r.t n_w
-    out.block<3, 3>( 6, 3) = -Eigen::Matrix3d::Identity(); // w.r.t n_a
-    out.block<3, 3>( 9, 6) = Eigen::Matrix3d::Identity(); // w.r.t n_{b_w}
-    out.block<3, 3>(12, 9) = Eigen::Matrix3d::Identity(); // w.r.t n_{b_a}
+    // out.block<3, 3>( 0, 3) = -Eigen::Matrix3d::Identity(); // w.r.t n_a
+    out.block<3, 3>( 3, 3) = -Eigen::Matrix3d::Identity(); // w.r.t n_a
+    out.block<3, 3>( 6, 0) = -Eigen::Matrix3d::Identity(); // w.r.t n_w
+    out.block<3, 3>(10, 6) = Eigen::Matrix3d::Identity(); // w.r.t n_{b_w}
+    out.block<3, 3>(13, 9) = Eigen::Matrix3d::Identity(); // w.r.t n_{b_a}
     
     return out;
   }
@@ -171,8 +173,8 @@ PROFC_NODE("update")
 // OBSERVATION MODEL
 
     auto h_model = [&](const State& s,
-                       Eigen::Matrix<double, Eigen::Dynamic, 9>& H,
-                       Eigen::Matrix<double, Eigen::Dynamic, 1>& z) {
+                       Eigen::Matrix<double, Eigen::Dynamic, 10>& H,
+                       Eigen::Matrix<double, Eigen::Dynamic,  1>& z) {
 
       int N = cloud->size();
 
@@ -223,8 +225,8 @@ PROFC_NODE("update")
         }
       }
 
-      H = Eigen::MatrixXd::Zero(first_matches.size(), 9);
-      z = Eigen::MatrixXd::Zero(first_matches.size(), 1);
+      H = Eigen::MatrixXd::Zero(first_matches.size(), 10);
+      z = Eigen::MatrixXd::Zero(first_matches.size(),  1);
 
       std::vector<int> indices(first_matches.size());
       std::iota(indices.begin(), indices.end(), 0);
@@ -243,12 +245,12 @@ PROFC_NODE("update")
           Eigen::Vector3d n = match.n.head(3).cast<double>();
 
           // Jacobian of SE3 act.
-          Matrix3x9d J_s; // Jacobian of state (pos., rot.)
+          Matrix3x10d J_s; // Jacobian of state (pos., rot.)
           s.X.element<0>().act(p_imu, J_s);
 
-          Matrix1x9d A = n.transpose() * J_s; 
+          Matrix1x10d A = n.transpose() * J_s; 
 
-          H.block<1, 9>(i, 0) << A;
+          H.block<1, 10>(i, 0) << A;
           z(i) = -match.dist2plane();
         }
       ); // end for_each
@@ -258,11 +260,11 @@ PROFC_NODE("update")
 // IESEKF UPDATE
 
     BundleT   X_predicted = X;
-    Matrix18d P_predicted = P;
+    Matrix19d P_predicted = P;
 
-    Eigen::Matrix<double, Eigen::Dynamic, 9> H;
-    Eigen::Matrix<double, Eigen::Dynamic, 1> z;
-    Matrix18d KH;
+    Eigen::Matrix<double, Eigen::Dynamic, 10> H;
+    Eigen::Matrix<double, Eigen::Dynamic,  1> z;
+    Matrix19d KH;
 
     double R = cfg.ikfom.lidar_noise;
 
@@ -272,24 +274,31 @@ PROFC_NODE("update")
       h_model(*this, H, z); // Update H,z and set K to zeros
 
       // update P
-      Matrix18d J;
+      Matrix19d J;
       Tangent dx = X.minus(X_predicted, J); // Xu-2021, [https://arxiv.org/abs/2107.06829] Eq. (11)
 
       P = J.inverse() * P_predicted * J.inverse().transpose();
 
-      Matrix9d HTH = H.transpose() * H / R;
-      Matrix18d P_inv = P.inverse();
-      P_inv.block<9, 9>(0, 0) += HTH;
+      Matrix10d HTH = H.transpose() * H / R;
+      Matrix19d P_inv = P.inverse();
+      P_inv.block<10, 10>(0, 0) += HTH;
       P_inv = P_inv.inverse();
 
-      Vector18d Kz = Vector18d::Zero(); 
-      Kz = P_inv.block<18, 9>(0, 0) * H.transpose() * z / R;
+      Vector19d Kz = Vector19d::Zero(); 
+      Kz = P_inv.block<19, 10>(0, 0) * H.transpose() * z / R;
 
       KH.setZero();
-      KH.block<18, 9>(0, 0) = P_inv.block<18, 9>(0, 0) * HTH;
+      KH.block<19, 10>(0, 0) = P_inv.block<19, 10>(0, 0) * HTH;
 
-      dx = Kz + (KH - Matrix18d::Identity()) * J.inverse() * dx; 
+      dx = Kz + (KH - Matrix19d::Identity()) * J.inverse() * dx; 
+      // dx.coeffs().block<3, 1>(3, 0) *= 0;
+      dx.coeffs().block<1, 1>(9, 0) *= 0;
+
+
       X = X.plus(dx);
+
+      std::cout << std::setprecision(20);
+      std::cout << "update delta error: \n" << dx.coeffs().block<10, 1>(0, 0) << std::endl;
 
       if ((dx.coeffs().array().abs() <= cfg.ikfom.tolerance).all())
         break;
@@ -297,7 +306,7 @@ PROFC_NODE("update")
     } while(i++ < cfg.ikfom.max_iters);
 
     X = X;
-    P = (Matrix18d::Identity() - KH) * P;
+    P = (Matrix19d::Identity() - KH) * P;
   }
 
 
@@ -311,6 +320,8 @@ PROFC_NODE("update")
   inline Eigen::Vector3d b_w()     const { return X.element<1>().coeffs();                  }
   inline Eigen::Vector3d b_a()     const { return X.element<2>().coeffs();                  }
   inline Eigen::Vector3d g()       const { return X.element<3>().coeffs();                  }
+  inline double          delta_t() const { return dt_;                                       }
+
 
   inline Eigen::Affine3f affine3f() const {
     Eigen::Affine3d T;
