@@ -17,24 +17,23 @@
 
 
 #include <manif/manif.h>
-#include <manif/SE_2_3.h>
-#include <manif/SE3.h>
+#include <manif/SGal3.h>
 #include <manif/Bundle.h>
 #include <manif/Rn.h>
 
 
 struct State {
 
-  using Matrix18d    = Eigen::Matrix<double, 18, 18>;
+  using Matrix19d    = Eigen::Matrix<double, 19, 19>;
   using Matrix12d    = Eigen::Matrix<double, 12, 12>;
-  using Matrix18x12d = Eigen::Matrix<double, 18, 12>;
-  using Matrix9d     = Eigen::Matrix<double,  9,  9>;
-  using Matrix3x9d   = Eigen::Matrix<double,  3,  9>;
-  using Matrix1x9d   = Eigen::Matrix<double,  1,  9>;
-  using Vector18d    = Eigen::Matrix<double, 18,  1>;
+  using Matrix19x12d = Eigen::Matrix<double, 19, 12>;
+  using Matrix10d    = Eigen::Matrix<double, 10, 10>;
+  using Matrix3x10d  = Eigen::Matrix<double,  3, 10>;
+  using Matrix1x10d  = Eigen::Matrix<double,  1, 10>;
+  using Vector19d    = Eigen::Matrix<double, 19,  1>;
 
   using BundleT = manif::Bundle<double,
-      manif::SE_2_3, // position & rotation & velocity
+      manif::SGal3,  // position & rotation & velocity
       manif::R3,     // angular bias
       manif::R3,     // acceleartion bias
       manif::R3      // gravity
@@ -43,7 +42,7 @@ struct State {
   using Tangent = typename BundleT::Tangent; 
 
   BundleT X;
-  Matrix18d P;
+  Matrix19d P;
   Matrix12d Q;
 
   Eigen::Vector3d w;      // angular velocity (IMU input)
@@ -55,11 +54,15 @@ struct State {
     Config& cfg = Config::getInstance();
     Eigen::Vector3d zero_vec = Eigen::Vector3d(0., 0., 0.);
 
-    X = BundleT(manif::SE_2_3d(0., 0., 0., 0., 0., 0., 0., 0., 0.), // x, y, z, roll, pitch, yaw, vx, vy, vz
+    X = BundleT(manif::SGal3d(0., 0., 0.,  // x y z
+                              0., 0., 0.,  // roll pitch yaw
+                              0., 0., 0.,  // vx, vy, vz
+                              0.),         // delta t
                 manif::R3d(zero_vec),
                 manif::R3d(zero_vec),
-                manif::R3d(Eigen::Vector3d(0., 0., -cfg.sensors.extrinsics.gravity))); // NOTE
-    
+                manif::R3d(Eigen::Vector3d::UnitZ() 
+                           * -cfg.sensors.extrinsics.gravity));
+
     P.setIdentity();
     P *= 1e-3f;
 
@@ -78,12 +81,12 @@ struct State {
   void predict(const Imu& imu, const double& dt) {
 PROFC_NODE("predict")
 
-    Matrix18d Gx, Gf; // Adjoint_X(u)^{-1}, J_r(u)  Sola-18, [https://arxiv.org/abs/1812.01537]
+    Matrix19d Gx, Gf; // Adjoint_X(u)^{-1}, J_r(u)  Sola-18, [https://arxiv.org/abs/1812.01537]
     X = X.plus(f(imu.lin_accel, imu.ang_vel, dt) * dt, Gx, Gf);
 
     // UPDATE COVARIANCE
-    Matrix18d    Fx = Gx + Gf * df_dx(imu, dt) * dt; // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (26)
-    Matrix18x12d Fw = Gf * df_dw(imu, dt) * dt;      // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (27)
+    Matrix19d    Fx = Gx + Gf * df_dx(imu, dt) * dt; // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (26)
+    Matrix19x12d Fw = Gf * df_dw(imu, dt) * dt;      // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (27)
 
     P = Fx * P * Fx.transpose() + Fw * Q * Fw.transpose(); 
 
@@ -108,7 +111,8 @@ PROFC_NODE("predict")
     Tangent u = Tangent::Zero();
     u.element<0>().coeffs() << R().transpose()*v() + 0.5*dt*(lin_acc - b_a() /* -n_a */ + R().transpose()*g()), 
                                ang_vel - b_w() /* -n_w */,
-                               lin_acc - b_a() /* -n_a */ + R().transpose()*g();
+                               lin_acc - b_a() /* -n_a */ + R().transpose()*g(),
+                               1;
     // u.element<1>().coeffs() = n_{b_w} 
     // u.element<2>().coeffs() = n_{b_a}
 
