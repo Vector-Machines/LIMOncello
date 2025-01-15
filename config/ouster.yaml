@@ -11,8 +11,8 @@ topics:
   frame_id: global
 
 
-verbose: true   # print performance board
-debug: true     # fill useful intermediate pcl (deskewed, processed ...) 
+verbose: false   # print performance board
+debug: false     # fill useful intermediate pcl (deskewed, processed ...) 
                 # for visualizing purposes
 
 sensors:
@@ -27,7 +27,7 @@ sensors:
     gravity_align: true     # estimate gravity vector
     accel: true             # estimate lin. accel. bias
     gyro: true              # estimate ang. vel. bias
-    time: 1.5               # time to estimate (during this time, the 
+    time: .5               # time to estimate (during this time, the 
                            # robot must be at stand still)
 
   time_offset: true # whether to take into account a possible sync offset
@@ -40,7 +40,7 @@ sensors:
       R: [0., 0., 0.]        # roll, pitch, yaw [deg]
 
     lidar2baselink:
-      t: [0.006253, -0.011775, 0.007645] # (x, y, z) [meters]
+      t: [0.006253, -0.011775, 0.98007645] # (x, y, z) [meters]
       R: [0.333483, -0.00, -0.0038787]   # roll, pitch, yaw [deg]
       # R: [1.0000263, 0.4999751, -0.0043634]
     gravity: 9.80304
@@ -48,7 +48,7 @@ sensors:
 
   intrinsics:
     accel_bias: [ 0.0001, 0.0001, 0.0001 ]  # [m/s^2]
-    gyro_bias:  [ 0.001, 0.001, 0.001 ]  # [rad/s]
+    gyro_bias:  [ 0.0001, 0.0001, 0.001 ]  # [rad/s]
     sm: [ 1.,  0.,  0.,
           0.,  1.,  0.,
           0.,  0.,  1. ]
@@ -68,7 +68,7 @@ sensors:
 filters:
   voxel_grid:
     active: true
-    leaf_size: [ .5, .5, .5 ]
+    leaf_size: [ 1., 1., .5 ]
 
   min_distance: # sphere crop
     active: true
@@ -79,7 +79,7 @@ filters:
     value: 180  # [deg]
   
   rate_sampling: # quick downsample
-    active: true
+    active: false
     value: 2
 
 

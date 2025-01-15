@@ -66,7 +66,7 @@ sensors:
 filters:
   voxel_grid:
     active: true
-    leaf_size: [ 1., 1., 1. ]
+    leaf_size: [ .5, .5, .5 ]
 
   min_distance: # sphere crop
     active: true
@@ -82,10 +82,10 @@ filters:
 
 
 IKFoM:  # Iterative Kalman Filter on Manifolds lib
-  query_iters: 1 # number of iterations doing KNN from max iterations 
-  max_iters: 20  # max num of iterations of the IESEKF
-  tolerance: 0.0001                      
-  estimate_extrinsics: true
+  query_iters: 3 # number of iterations doing KNN from max iterations 
+  max_iters: 4  # max num of iterations of the IESEKF
+  tolerance: 0.001                      
+  estimate_extrinsics: false
   lidar_noise: 0.001
 
   covariance:

@@ -105,7 +105,7 @@ public:
       double dt = imu.stamp - prev_imu_.stamp;
       dt = (dt < 0 or dt > 0.1) ? 1./cfg.sensors.imu.hz : dt;
 
-      imu = imu2baselink(imu, dt);
+      // imu = imu2baselink(imu, dt);
 
       // Correct acceleration
       imu.lin_accel = cfg.sensors.intrinsics.sm * imu.lin_accel;
@@ -127,7 +127,6 @@ public:
   }
 
   void lidar_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
-    return;
 PROFC_NODE("LiDAR Callback")
 
     Config& cfg = Config::getInstance();
