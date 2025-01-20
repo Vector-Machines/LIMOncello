@@ -238,7 +238,7 @@ PROFC_NODE("update")
           // Normal vector to plane
           Eigen::Vector3d n = match.n.head(3).cast<double>();
 
-          // Jacobian of SE3 act.
+          // Jacobian of SE_2_3 act.
           Matrix3x9d J_s; // Jacobian of state (pos., rot.)
           s.X.element<0>().act(p_imu, J_s);
 

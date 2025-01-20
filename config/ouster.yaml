@@ -11,8 +11,8 @@ topics:
   frame_id: global
 
 
-verbose: false   # print performance board
-debug: false     # fill useful intermediate pcl (deskewed, processed ...) 
+verbose: true   # print performance board
+debug: true     # fill useful intermediate pcl (deskewed, processed ...) 
                 # for visualizing purposes
 
 sensors:
@@ -27,12 +27,12 @@ sensors:
     gravity_align: true     # estimate gravity vector
     accel: true             # estimate lin. accel. bias
     gyro: true              # estimate ang. vel. bias
-    time: .5               # time to estimate (during this time, the 
+    time: 1.5               # time to estimate (during this time, the 
                            # robot must be at stand still)
 
   time_offset: true # whether to take into account a possible sync offset
                     # between IMU and LiDAR (set to true if they are not properly in sync)
-  TAI_offset: 0.
+  TAI_offset: 37.
 
   extrinsics:
     imu2baselink:
@@ -68,7 +68,7 @@ sensors:
 filters:
   voxel_grid:
     active: true
-    leaf_size: [ 1., 1., .5 ]
+    leaf_size: [ .5, .5, .5 ]
 
   min_distance: # sphere crop
     active: true
@@ -79,12 +79,12 @@ filters:
     value: 180  # [deg]
   
   rate_sampling: # quick downsample
-    active: false
+    active: true
     value: 2
 
 
 IKFoM:  # Iterative Kalman Filter on Manifolds lib
-  query_iters: 3 # number of iterations doing KNN from max iterations 
+  query_iters: 15 # number of iterations doing KNN from max iterations 
   max_iters: 20  # max num of iterations of the IESEKF
   tolerance: 0.0001                      
   estimate_extrinsics: false
