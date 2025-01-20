@@ -27,7 +27,7 @@ sensors:
     gravity_align: false     # estimate gravity vector
     accel: false             # estimate lin. accel. bias
     gyro: false              # estimate ang. vel. bias
-    time: 1.5               # time to estimate (during this time, the 
+    time: .5               # time to estimate (during this time, the 
                            # robot must be at stand still)
 
   time_offset: true # whether to take into account a possible sync offset
@@ -84,7 +84,7 @@ filters:
 
 
 IKFoM:  # Iterative Kalman Filter on Manifolds lib
-  query_iters: 3 # number of iterations doing KNN from max iterations 
+  query_iters: 10 # number of iterations doing KNN from max iterations 
   max_iters: 20  # max num of iterations of the IESEKF
   tolerance: 0.0001                      
   estimate_extrinsics: false

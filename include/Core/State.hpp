@@ -75,29 +75,21 @@ struct State {
     // Control signal noise (never changes)
     Q.setZero();
  
-    Q.block<3, 3>(0, 0) = cfg.ikfom.covariance.gyro * Eigen::Matrix3d::Identity();       // n_w
-    Q.block<3, 3>(3, 3) = cfg.ikfom.covariance.accel * Eigen::Matrix3d::Identity();      // n_a
-    Q.block<3, 3>(6, 6) = cfg.ikfom.covariance.bias_gyro * Eigen::Matrix3d::Identity();  // n_{b_w}
+    Q.block<3, 3>(0, 0) = cfg.ikfom.covariance.gyro       * Eigen::Matrix3d::Identity(); // n_w
+    Q.block<3, 3>(3, 3) = cfg.ikfom.covariance.accel      * Eigen::Matrix3d::Identity(); // n_a
+    Q.block<3, 3>(6, 6) = cfg.ikfom.covariance.bias_gyro  * Eigen::Matrix3d::Identity(); // n_{b_w}
     Q.block<3, 3>(9, 9) = cfg.ikfom.covariance.bias_accel * Eigen::Matrix3d::Identity(); // n_{b_a}
   } 
 
   void predict(const Imu& imu, const double& dt) {
 PROFC_NODE("predict")
 
-    // UPDATE STATE
-    Tangent u = Tangent::Zero();
-    u.element<0>().coeffs() = v();
-    u.element<1>().coeffs() = imu.ang_vel - b_w() /* -n_w */;
-    u.element<4>().coeffs() = R() * (imu.lin_accel - b_a() /* -n_a */) + g();
-    // u.element<5>().coeffs() = n_{b_w} 
-    // u.element<6>().coeffs() = n_{b_a}
-
     Matrix24d Gx, Gf; // Adjoint_X(u)^{-1}, J_r(u)  Sola-18, [https://arxiv.org/abs/1812.01537]
-    X = X.plus(u * dt, Gx, Gf);
+    X = X.plus(f(imu.lin_accel, imu.ang_vel, dt) * dt, Gx, Gf);
 
     // UPDATE COVARIANCE
-    Matrix24d    Fx = Gx + Gf * df_dx(imu) * dt; // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (26)
-    Matrix24x12d Fw = Gf * df_dw(imu) * dt;      // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (27)
+    Matrix24d    Fx = Gx + Gf * df_dx(imu, dt) * dt; // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (26)
+    Matrix24x12d Fw = Gf * df_dw(imu, dt) * dt;      // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (27)
 
     P = Fx * P * Fx.transpose() + Fw * Q * Fw.transpose(); 
 
@@ -108,23 +100,41 @@ PROFC_NODE("predict")
     stamp = imu.stamp;
   }
 
+
   void predict(const double& t) {
     double dt = t - this->stamp;
     assert(dt >= 0);
-    
-    Tangent u = Tangent::Zero();
-    u.element<0>().coeffs() = v();
-    u.element<1>().coeffs() = w - b_w() /* -n_w */;
-    u.element<4>().coeffs() = R() * (a - b_a() /* -n_a */) + g();
-    X = X.plus(u * dt);
-  }
-  
 
-  Matrix24d df_dx(const Imu& imu) {
+    X = X.plus(f(a, w, dt) * dt);
+  }
+
+
+  Tangent f(const Eigen::Vector3d& lin_acc, 
+            const Eigen::Vector3d& ang_vel, 
+            const double& dt) {
+
+    Tangent u = Tangent::Zero();
+
+    Eigen::Vector3d global_acc = R() * (lin_acc - b_a() /* -n_a */) + g();
+
+    u.element<0>().coeffs() = v() + 0.5 * global_acc * dt;
+    u.element<1>().coeffs() = ang_vel - b_w() /* -n_w */;
+    u.element<4>().coeffs() = global_acc;
+    // u.element<5>().coeffs() = n_{b_w} 
+    // u.element<6>().coeffs() = n_{b_a}
+
+    return u;
+  }
+
+
+  Matrix24d df_dx(const Imu& imu, const double& dt) {
     Matrix24d out = Matrix24d::Zero();
 
     // position update
-    out.block<3, 3>(0, 12) = Eigen::Matrix3d::Identity(); // w.r.t v
+    out.block<3, 3>(0, 12) =  Eigen::Matrix3d::Identity(); // w.r.t v
+    out.block<3, 3>(0,  3) = -R() * manif::skew(imu.lin_accel - b_a()) * 0.5*dt; // w.r.t R
+    out.block<3, 3>(0, 18) = -R() * 0.5*dt; // w.r.t b_a 
+    out.block<3, 3>(0, 21) =  Eigen::Matrix3d::Identity() * 0.5*dt; // w.r.t g
 
     // rotation update
     out.block<3, 3>(3, 15) = -Eigen::Matrix3d::Identity(); // w.r.t b_w
@@ -138,7 +148,7 @@ PROFC_NODE("predict")
   }
 
 
-  Matrix24x12d df_dw(const Imu& imu) {
+  Matrix24x12d df_dw(const Imu& imu, const double& dt) {
     Matrix24x12d out = Matrix24x12d::Zero();
 
     // rotation update
