@@ -208,6 +208,9 @@ PROFC_NODE("update")
           }
         ); // end for_each
 
+
+        first_matches.clear();
+        
         for (int i = 0; i < N; i++) {
           if (chosen[i])
             first_matches.push_back(matches[i]);        
