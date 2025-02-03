@@ -62,7 +62,7 @@ struct Match {
                                global(global_),
                                n(n_) {};
 
-  float dist2plane() {
+  inline float dist2plane() {
     return n(0)*global(0) + n(1)*global(1) + n(2)*global(2) + n(3); 
   }
 };

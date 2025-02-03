@@ -2,9 +2,9 @@
 
 topics:
   input:
-    lidar: /ouster/pointss
-    # imu:   /ouster/imu
-    imu: /EL/Sensors/vectornav/IMU
+    lidar: /ouster/points
+    imu:   /ouster/imu
+    # imu: /EL/Sensors/vectornav/IMU
   output:
     state: state  
     frame: full_pcl
@@ -12,7 +12,7 @@ topics:
 
 
 verbose: true   # print performance board
-debug: true     # fill useful intermediate pcl (deskewed, processed ...) 
+debug: false     # fill useful intermediate pcl (deskewed, processed ...) 
                 # for visualizing purposes
 
 sensors:
@@ -21,13 +21,13 @@ sensors:
     end_of_sweep: false # whether the sweep reference time is w.r.t. the
                         # start or the end of the scan (only applies to VELODYNE/OUSTER)
   imu:
-    hz: 400
+    hz: 100
 
   calibration:  # automatic IMU calibration (if all set to false, no calibration will be done)
     gravity_align: true     # estimate gravity vector
     accel: true             # estimate lin. accel. bias
     gyro: true              # estimate ang. vel. bias
-    time: 0.5               # time to estimate (during this time, the 
+    time: 1.5               # time to estimate (during this time, the 
                            # robot must be at stand still)
 
   time_offset: true # whether to take into account a possible sync offset
@@ -86,11 +86,11 @@ filters:
 IKFoM:  # Iterative Kalman Filter on Manifolds lib
   query_iters: 3 # number of iterations doing KNN from max iterations 
   max_iters: 20  # max num of iterations of the IESEKF
-  tolerance: 0.0001                      
+  tolerance: 0.001                      
   estimate_extrinsics: false
   lidar_noise: 0.001
 
-  covariance:
+  covariance:            # Allan noise
     gyro: 6.01e-4        # [m^2/s^2]
     accel: 1.53e-2       # [rad^2]
     bias_gyro: 1.54e-5   # [m^2/s^2 * sqrt(s)]

@@ -8,6 +8,12 @@
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
 
+#include <manif/manif.h>
+#include <manif/SE_2_3.h>
+#include <manif/SE3.h>
+#include <manif/Bundle.h>
+#include <manif/Rn.h>
+
 #include "Core/Imu.hpp"
 #include "Core/Map.hpp"
 #include "Core/Octree.hpp"
@@ -16,35 +22,29 @@
 #include "Utils/PCL.hpp"
 
 
-#include <manif/manif.h>
-#include <manif/SE_2_3.h>
-#include <manif/SE3.h>
-#include <manif/Bundle.h>
-#include <manif/Rn.h>
-
-
 struct State {
-
-  using Matrix18d    = Eigen::Matrix<double, 18, 18>;
-  using Matrix12d    = Eigen::Matrix<double, 12, 12>;
-  using Matrix18x12d = Eigen::Matrix<double, 18, 12>;
-  using Matrix9d     = Eigen::Matrix<double,  9,  9>;
-  using Matrix3x9d   = Eigen::Matrix<double,  3,  9>;
-  using Matrix1x9d   = Eigen::Matrix<double,  1,  9>;
-  using Vector18d    = Eigen::Matrix<double, 18,  1>;
 
   using BundleT = manif::Bundle<double,
       manif::SE_2_3, // position & rotation & velocity
       manif::R3,     // angular bias
       manif::R3,     // acceleartion bias
       manif::R3      // gravity
-  >;
+    >;
 
-  using Tangent = typename BundleT::Tangent; 
+  using Tangent = typename BundleT::Tangent;
+
+  static constexpr int DoF = BundleT::DoF;                  // DoF whole state
+  static constexpr int DoFNoise = 12;                       // b_w, b_a, n_{b_w}, n_{b_a}
+  static constexpr int DoFObs = manif::SE_2_3<double>::DoF; // DoF obsevation equation
+
+  using ProcessMatrix = Eigen::Matrix<double, DoF, DoF>;
+  using MappingMatrix = Eigen::Matrix<double, DoF, DoFNoise>;
+  using NoiseMatrix   = Eigen::Matrix<double, DoFNoise,  DoFNoise>;
+
 
   BundleT X;
-  Matrix18d P;
-  Matrix12d Q;
+  ProcessMatrix P;
+  NoiseMatrix Q;
 
   Eigen::Vector3d w;      // angular velocity (IMU input)
   Eigen::Vector3d a;      // linear acceleration (IMU input)
@@ -78,12 +78,12 @@ struct State {
   void predict(const Imu& imu, const double& dt) {
 PROFC_NODE("predict")
 
-    Matrix18d Gx, Gf; // Adjoint_X(u)^{-1}, J_r(u)  Sola-18, [https://arxiv.org/abs/1812.01537]
+    ProcessMatrix Gx, Gf; // Adjoint_X(u)^{-1}, J_r(u)  Sola-18, [https://arxiv.org/abs/1812.01537]
     X = X.plus(f(imu.lin_accel, imu.ang_vel, dt) * dt, Gx, Gf);
 
     // UPDATE COVARIANCE
-    Matrix18d    Fx = Gx + Gf * df_dx(imu, dt) * dt; // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (26)
-    Matrix18x12d Fw = Gf * df_dw(imu, dt) * dt;      // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (27)
+    ProcessMatrix Fx = Gx + Gf * df_dx(imu, dt) * dt; // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (26)
+    MappingMatrix Fw = Gf * df_dw(imu, dt) * dt;      // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (27)
 
     P = Fx * P * Fx.transpose() + Fw * Q * Fw.transpose(); 
 
@@ -116,8 +116,8 @@ PROFC_NODE("predict")
   }
 
 
-  Matrix18d df_dx(const Imu& imu, const double& dt) {
-    Matrix18d out = Matrix18d::Zero();
+  ProcessMatrix df_dx(const Imu& imu, const double& dt) {
+    ProcessMatrix out = ProcessMatrix::Zero();
 
     // position
     out.block<3, 3>(0, 3) = -R().transpose()*manif::skew(v()) * -R()   // w.r.t R := d(R^-1*v)/dR * d(R^-1)/dR
@@ -139,16 +139,16 @@ PROFC_NODE("predict")
   }
 
 
-  Matrix18x12d df_dw(const Imu& imu, const double& dt) {
+  MappingMatrix df_dw(const Imu& imu, const double& dt) {
     // w = (n_w, n_a, n_{b_w}, n_{b_a})
 
-    Matrix18x12d out = Matrix18x12d::Zero();
+    MappingMatrix out = MappingMatrix::Zero();
 
     out.block<3, 3>( 0, 3) = -Eigen::Matrix3d::Identity(); // w.r.t n_a
     out.block<3, 3>( 3, 0) = -Eigen::Matrix3d::Identity(); // w.r.t n_w
     out.block<3, 3>( 6, 3) = -Eigen::Matrix3d::Identity(); // w.r.t n_a
-    out.block<3, 3>( 9, 6) = Eigen::Matrix3d::Identity(); // w.r.t n_{b_w}
-    out.block<3, 3>(12, 9) = Eigen::Matrix3d::Identity(); // w.r.t n_{b_a}
+    out.block<3, 3>( 9, 6) =  Eigen::Matrix3d::Identity(); // w.r.t n_{b_w}
+    out.block<3, 3>(12, 9) =  Eigen::Matrix3d::Identity(); // w.r.t n_{b_a}
     
     return out;
   }
@@ -167,8 +167,8 @@ PROFC_NODE("update")
 // OBSERVATION MODEL
 
     auto h_model = [&](const State& s,
-                       Eigen::Matrix<double, Eigen::Dynamic, 9>& H,
-                       Eigen::Matrix<double, Eigen::Dynamic, 1>& z) {
+                       Eigen::Matrix<double, Eigen::Dynamic, DoFObs>& H,
+                       Eigen::Matrix<double, Eigen::Dynamic, 1>&      z) {
 
       int N = cloud->size();
 
@@ -209,7 +209,7 @@ PROFC_NODE("update")
         ); // end for_each
 
 
-        first_matches.clear();
+        first_matches.clear(); // !!
         
         for (int i = 0; i < N; i++) {
           if (chosen[i])
@@ -222,7 +222,7 @@ PROFC_NODE("update")
         }
       }
 
-      H = Eigen::MatrixXd::Zero(first_matches.size(), 9);
+      H = Eigen::MatrixXd::Zero(first_matches.size(), DoFObs);
       z = Eigen::MatrixXd::Zero(first_matches.size(), 1);
 
       std::vector<int> indices(first_matches.size());
@@ -242,12 +242,12 @@ PROFC_NODE("update")
           Eigen::Vector3d n = match.n.head(3).cast<double>();
 
           // Jacobian of SE_2_3 act.
-          Matrix3x9d J_s; // Jacobian of state (pos., rot.)
+          Eigen::Matrix<double, 3, DoFObs> J_s; // Jacobian of state (pos., rot.)
           s.X.element<0>().act(p_imu, J_s);
 
-          Matrix1x9d A = n.transpose() * J_s; 
+          Eigen::Matrix<double, 1, DoFObs> A = n.transpose() * J_s; 
 
-          H.block<1, 9>(i, 0) << A;
+          H.block<1, DoFObs>(i, 0) << A;
           z(i) = -match.dist2plane();
         }
       ); // end for_each
@@ -256,12 +256,12 @@ PROFC_NODE("update")
 
 // IESEKF UPDATE
 
-    BundleT   X_predicted = X;
-    Matrix18d P_predicted = P;
+    BundleT       X_predicted = X;
+    ProcessMatrix P_predicted = P;
 
-    Eigen::Matrix<double, Eigen::Dynamic, 9> H;
-    Eigen::Matrix<double, Eigen::Dynamic, 1> z;
-    Matrix18d KH;
+    Eigen::Matrix<double, Eigen::Dynamic, DoFObs> H;
+    Eigen::Matrix<double, Eigen::Dynamic, 1>      z;
+    ProcessMatrix KH;
 
     double R = cfg.ikfom.lidar_noise;
 
@@ -271,23 +271,22 @@ PROFC_NODE("update")
       h_model(*this, H, z); // Update H,z and set K to zeros
 
       // update P
-      Matrix18d J;
+      ProcessMatrix J;
       Tangent dx = X.minus(X_predicted, J); // Xu-2021, [https://arxiv.org/abs/2107.06829] Eq. (11)
 
       P = J.inverse() * P_predicted * J.inverse().transpose();
 
-      Matrix9d HTH = H.transpose() * H / R;
-      Matrix18d P_inv = P.inverse();
-      P_inv.block<9, 9>(0, 0) += HTH;
+      Eigen::Matrix<double, DoFObs, DoFObs> HTH = H.transpose() * H / R;
+      ProcessMatrix P_inv = P.inverse();
+      P_inv.block<DoFObs, DoFObs>(0, 0) += HTH;
       P_inv = P_inv.inverse();
 
-      Vector18d Kz = Vector18d::Zero(); 
-      Kz = P_inv.block<18, 9>(0, 0) * H.transpose() * z / R;
+      Tangent Kz = P_inv.block<DoF, DoFObs>(0, 0) * H.transpose() * z / R;
 
       KH.setZero();
-      KH.block<18, 9>(0, 0) = P_inv.block<18, 9>(0, 0) * HTH;
+      KH.block<DoF, DoFObs>(0, 0) = P_inv.block<DoF, DoFObs>(0, 0) * HTH;
 
-      dx = Kz + (KH - Matrix18d::Identity()) * J.inverse() * dx; 
+      dx = Kz + (KH - ProcessMatrix::Identity()) * J.inverse() * dx; 
       X = X.plus(dx);
 
       if ((dx.coeffs().array().abs() <= cfg.ikfom.tolerance).all())
@@ -296,7 +295,7 @@ PROFC_NODE("update")
     } while(i++ < cfg.ikfom.max_iters);
 
     X = X;
-    P = (Matrix18d::Identity() - KH) * P;
+    P = (ProcessMatrix::Identity() - KH) * P;
   }
 
 
