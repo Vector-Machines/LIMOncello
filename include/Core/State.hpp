@@ -102,7 +102,7 @@ PROFC_NODE("predict")
   void predict(const double& t) {
     double dt = t - this->stamp;
     assert(dt >= 0);
-    
+
     X = X.plus(f(a, w, dt) * dt);
   }
 
@@ -120,9 +120,9 @@ PROFC_NODE("predict")
     return u;
   }
 
-
   ProcessMatrix df_dx(const Imu& imu, const double& dt) {
     ProcessMatrix out = ProcessMatrix::Zero();
+
 
     // velocity 
     out.block<3, 3>(3,  6) = -R().transpose()*manif::skew(g()) * -R(); // w.r.t R := d(R^-1*g)/dR * d(R^-1)/dR
