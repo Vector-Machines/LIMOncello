@@ -24,10 +24,10 @@ sensors:
     hz: 100
 
   calibration:  # automatic IMU calibration (if all set to false, no calibration will be done)
-    gravity_align: false     # estimate gravity vector
-    accel: false             # estimate lin. accel. bias
-    gyro: false              # estimate ang. vel. bias
-    time: .5               # time to estimate (during this time, the 
+    gravity_align: true     # estimate gravity vector
+    accel: true             # estimate lin. accel. bias
+    gyro: true              # estimate ang. vel. bias
+    time: 1.               # time to estimate (during this time, the 
                            # robot must be at stand still)
 
   time_offset: true # whether to take into account a possible sync offset
@@ -40,7 +40,7 @@ sensors:
       R: [0., 0., 0.]        # roll, pitch, yaw [deg]
 
     lidar2baselink:
-      t: [0.006253, -0.011775, 0.007645] # (x, y, z) [meters]
+      t: [0.006253, -0.011775, 0.98007645] # (x, y, z) [meters]
       R: [0.333483, -0.00, -0.0038787]   # roll, pitch, yaw [deg]
       # R: [1.0000263, 0.4999751, -0.0043634]
     gravity: 9.80304
@@ -48,7 +48,7 @@ sensors:
 
   intrinsics:
     accel_bias: [ 0.0001, 0.0001, 0.0001 ]  # [m/s^2]
-    gyro_bias:  [ 0.001, 0.001, 0.001 ]  # [rad/s]
+    gyro_bias:  [ 0.0001, 0.0001, 0.001 ]  # [rad/s]
     sm: [ 1.,  0.,  0.,
           0.,  1.,  0.,
           0.,  0.,  1. ]
@@ -79,12 +79,12 @@ filters:
     value: 180  # [deg]
   
   rate_sampling: # quick downsample
-    active: true
+    active: false
     value: 2
 
 
 IKFoM:  # Iterative Kalman Filter on Manifolds lib
-  query_iters: 10 # number of iterations doing KNN from max iterations 
+  query_iters: 1 # number of iterations doing KNN from max iterations 
   max_iters: 20  # max num of iterations of the IESEKF
   tolerance: 0.0001                      
   estimate_extrinsics: false
