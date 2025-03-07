@@ -22,8 +22,7 @@
 
 
 ros::Publisher pub_state, pub_frame, pub_raw, 
-               pub_deskewed, pub_downsampled, pub_to_match,
-               pub_dt;
+               pub_deskewed, pub_downsampled, pub_to_match;
 
 
 class Manager {
@@ -42,7 +41,7 @@ class Manager {
 
   ros::NodeHandle nh_;
 
-  thuni::Octree ioctree_;
+  charlie::Octree ioctree_;
 
   
 public:
@@ -53,13 +52,13 @@ public:
                            or cfg.sensors.calibration.accel
                            or cfg.sensors.calibration.gyro); 
 
-    ioctree_.set_bucket_size(cfg.ioctree.bucket_size);
-    ioctree_.set_down_size(cfg.ioctree.downsample);
-    ioctree_.set_min_extent(cfg.ioctree.min_extent);
-    ioctree_.set_order(cfg.ioctree.order);
+    ioctree_.setBucketSize(cfg.ioctree.bucket_size);
+    ioctree_.setDownsample(cfg.ioctree.downsample);
+    ioctree_.setMinExtent(cfg.ioctree.min_extent);
   };
   
   ~Manager() = default;
+
 
   void imu_callback(const sensor_msgs::Imu::ConstPtr& msg) {
 
@@ -107,7 +106,7 @@ public:
       double dt = imu.stamp - prev_imu_.stamp;
       dt = (dt < 0 or dt > 0.1) ? 1./cfg.sensors.imu.hz : dt;
 
-      // imu = imu2baselink(imu, dt);
+      imu = imu2baselink(imu, dt);
 
       // Correct acceleration
       imu.lin_accel = cfg.sensors.intrinsics.sm * imu.lin_accel;
@@ -124,13 +123,10 @@ public:
       cv_prop_stamp_.notify_one();
 
       pub_state.publish(toROS(state_));
-
-      std_msgs::Float32 msg;
-      msg.data = state_.delta_t();
-      pub_dt.publish(msg);
     }
 
   }
+
 
   void lidar_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
 PROFC_NODE("LiDAR Callback")
@@ -262,8 +258,6 @@ int main(int argc, char** argv) {
   pub_deskewed    = nh.advertise<sensor_msgs::PointCloud2>("debug/deskewed",    10);
   pub_downsampled = nh.advertise<sensor_msgs::PointCloud2>("debug/downsampled", 10);
   pub_to_match    = nh.advertise<sensor_msgs::PointCloud2>("debug/to_match",    10);
-  pub_dt          = nh.advertise<std_msgs::Float32>("debug/delta_t",            10);
-
 
 
   // Subscribers

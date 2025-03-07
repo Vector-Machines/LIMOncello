@@ -11,7 +11,7 @@ topics:
   frame_id: global
 
 
-verbose: false   # print performance board
+verbose: true   # print performance board
 debug: false     # fill useful intermediate pcl (deskewed, processed ...) 
                 # for visualizing purposes
 
@@ -84,7 +84,7 @@ filters:
 
 
 IKFoM:  # Iterative Kalman Filter on Manifolds lib
-  query_iters: 3 # number of iterations doing KNN from max iterations 
+  query_iters: 1 # number of iterations doing KNN from max iterations 
   max_iters: 20  # max num of iterations of the IESEKF
   tolerance: 0.0001                      
   estimate_extrinsics: false
