@@ -191,13 +191,7 @@ PROFC_NODE("LiDAR Callback")
   mtx_state_.lock();
 
     PointCloudT::Ptr deskewed = deskew(raw, state_, interpolated, offset, sweep_time);
-
-    PointCloudT::Ptr downsampled(boost::make_shared<PointCloudT>());
-    *downsampled = *deskewed;
-
-    if (cfg.filters.voxel_grid.active)
-      downsampled = voxel_grid(deskewed);
-    
+    PointCloudT::Ptr downsampled = voxel_grid(deskewed);
     PointCloudT::Ptr processed = process(downsampled);
 
     if (processed->points.empty()) {
@@ -206,7 +200,7 @@ PROFC_NODE("LiDAR Callback")
     }
 
     state_.update(processed, ioctree_);
-    Eigen::Affine3f T = state_.affine3f() * state_.I2L_affine3f();
+    Eigen::Affine3f T = (state_.affine3d() * state_.I2L_affine3d()).cast<float>();
 
   mtx_state_.unlock();
 
