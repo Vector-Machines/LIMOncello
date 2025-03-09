@@ -83,11 +83,11 @@ filters:
 
 
 IKFoM:  # Iterative Kalman Filter on Manifolds lib
-  query_iters: 1 # number of iterations doing KNN from max iterations 
-  max_iters: 1  # max num of iterations of the IESEKF
-  tolerance: 0.0001                      
+  query_iters: 3 # number of iterations doing KNN from max iterations 
+  max_iters: 10  # max num of iterations of the IESEKF
+  tolerance: 0.001                      
   estimate_extrinsics: false
-  lidar_noise: 0.001
+  lidar_noise: 0.0005
 
   covariance:
     gyro: 6.01e-4        # [m^2/s^2]
@@ -96,9 +96,9 @@ IKFoM:  # Iterative Kalman Filter on Manifolds lib
     bias_accel: 3.38e-4  # [rad/s * sqrt(s)]
   
   plane:                     # plane features for point to plane ICP
-    points: 5                # num of points that constitute a plane
-    max_sqrt_dist: 2.0       # [m] if a neighor exceeds is too far the plane is not valid
-    plane_threshold: 5.0e-2  # [m] max distance from point to plane to be 
+    points: 15                # num of points that constitute a plane
+    max_sqrt_dist: 1.0       # [m] if a neighor exceeds is too far the plane is not valid
+    plane_threshold: 0.10  # [m] max distance from point to plane to be 
                              # considered a valid plane 
     
 
