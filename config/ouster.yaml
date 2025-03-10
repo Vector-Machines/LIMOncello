@@ -27,7 +27,7 @@ sensors:
     gravity_align: true     # estimate gravity vector
     accel: true             # estimate lin. accel. bias
     gyro: true              # estimate ang. vel. bias
-    time: 1.               # time to estimate (during this time, the 
+    time: 3.               # time to estimate (during this time, the 
                            # robot must be at stand still)
 
   time_offset: true # whether to take into account a possible sync offset
@@ -67,7 +67,6 @@ sensors:
   
 filters:
   voxel_grid:
-    active: true
     leaf_size: [ .5, .5, .5 ]
 
   min_distance: # sphere crop
@@ -99,12 +98,11 @@ IKFoM:  # Iterative Kalman Filter on Manifolds lib
   plane:                     # plane features for point to plane ICP
     points: 5                # num of points that constitute a plane
     max_sqrt_dist: 2.0       # [m] if a neighor exceeds is too far the plane is not valid
-    plane_threshold: 5.0e-2  # [m] max distance from point to plane to be 
+    plane_threshold: 5e-2  # [m] max distance from point to plane to be 
                              # considered a valid plane 
     
 
 iOctree:
-  order: false
   min_extent: 0.2
   bucket_size: 2
   downsample: true
