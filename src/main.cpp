@@ -220,8 +220,7 @@ PROFC_NODE("LiDAR Callback")
     }
 
     // Update map
-    if (state_.stamp - first_imu_stamp_ < 58)
-      ioctree_.update(processed->points);
+    ioctree_.update(processed->points);
 
     if (cfg.verbose)
       PROFC_PRINT()
