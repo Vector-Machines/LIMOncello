@@ -7,37 +7,42 @@
 #include "Utils/PCL.hpp"
 
 
-inline bool estimate_plane(Eigen::Vector4d& pabcd,
+inline bool estimate_plane(Eigen::Vector4f& pabcd,
                            const std::vector<pcl::PointXYZ>& pts,
                            const double& thresh) {
 
-  int N = pts.size();
-  if (N < 3)
-    return false;
+  int NUM_MATCH_POINTS = pts.size();
+  Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> A(NUM_MATCH_POINTS, 3);
+  Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> b(NUM_MATCH_POINTS, 1);
+  
+  A.setZero();
+  b.setOnes();
+  b *= -1.0f;
 
-  Eigen::Matrix<double, Eigen::Dynamic, 3> neighbors(N, 3);
-  for (size_t i = 0; i < N; i++) {
-    neighbors.row(i) = pts[i].getVector3fMap().cast<double>();
+  for (int j = 0; j < NUM_MATCH_POINTS; j++) {
+    A(j,0) = pts[j].x;
+    A(j,1) = pts[j].y;
+    A(j,2) = pts[j].z;
   }
 
-  Eigen::Vector3d centroid = neighbors.colwise().mean(); 
-  neighbors.rowwise() -= centroid.transpose();
+  Eigen::Matrix<float, 3, 1> normvec = A.colPivHouseholderQr().solve(b);
+  Eigen::Vector4f pca_result;
 
-  Eigen::Matrix3d cov = (neighbors.transpose() * neighbors) / N;
+  float n = normvec.norm();
+  pca_result(0) = normvec(0) / n;
+  pca_result(1) = normvec(1) / n;
+  pca_result(2) = normvec(2) / n;
+  pca_result(3) = 1.0 / n;
+  
+  pabcd = pca_result;
 
-  Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigensolver(cov);
-  if (eigensolver.info() != Eigen::Success)
-    return false;
-
-  Eigen::Vector3d normal = eigensolver.eigenvectors().col(0);
-  double d = -normal.dot(centroid);
-
-  pabcd.head<3>() = normal;
-  pabcd(3) = d;
-
-  for (auto& p : pts) {
-    double distance = normal.dot(p.getVector3fMap().cast<double>()) + d;
-    if (std::abs(distance) > thresh)
+  for (int j = 0; j < pts.size(); j++) {
+    double dist2point = std::fabs(pabcd(0) * pts[j].x 
+                      + pabcd(1) * pts[j].y
+                      + pabcd(2) * pts[j].z
+                      + pabcd(3));
+    
+    if (dist2point > thresh)
       return false;
   }
 
@@ -46,16 +51,19 @@ inline bool estimate_plane(Eigen::Vector4d& pabcd,
 
 
 struct Match {
-  Eigen::Vector3d p;
-  Eigen::Vector4d n; // global normal vector
+  Eigen::Vector3f local;
+  Eigen::Vector3f global;
+  Eigen::Vector4f n; // normal vector
 
   Match() = default;
-  Match(Eigen::Vector3d& p_, Eigen::Vector4d& n_) : p(p_), n(n_) {};
+  Match(Eigen::Vector3f& local_,
+        Eigen::Vector3f& global_,
+        Eigen::Vector4f& n_) : local(local_), 
+                               global(global_),
+                               n(n_) {};
 
-  inline static double dist2plane(const Eigen::Vector4d& normal,
-                                  const Eigen::Vector3d& point) {
-
-    return normal.head<3>().dot(point) + normal(3);
+  float dist2plane() {
+    return n(0)*global(0) + n(1)*global(1) + n(2)*global(2) + n(3); 
   }
 };
 

@@ -81,6 +81,7 @@ struct Config {
 
   struct Filters {
     struct {
+    	bool active;
     	Eigen::Vector4d leaf_size;
     } voxel_grid;
 
@@ -123,6 +124,7 @@ struct Config {
   } ikfom;
 
   struct iOctree {
+    bool order;
     float min_extent;
     int bucket_size;
     bool downsample;

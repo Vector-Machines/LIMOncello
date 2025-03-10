@@ -1,5 +1,3 @@
-// From https://github.com/mnpk/profc
-
 #pragma once
 #include <stdio.h>
 #include <functional>

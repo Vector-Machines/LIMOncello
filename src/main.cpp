@@ -10,7 +10,6 @@
 #include <geometry_msgs/Vector3.h>
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/PointCloud2.h>
-#include "std_msgs/Float32.h"
 
 #include "Core/Octree.hpp"
 #include "Core/State.hpp"
@@ -41,7 +40,7 @@ class Manager {
 
   ros::NodeHandle nh_;
 
-  charlie::Octree ioctree_;
+  thuni::Octree ioctree_;
 
   
 public:
@@ -52,13 +51,13 @@ public:
                            or cfg.sensors.calibration.accel
                            or cfg.sensors.calibration.gyro); 
 
-    ioctree_.setBucketSize(cfg.ioctree.bucket_size);
-    ioctree_.setDownsample(cfg.ioctree.downsample);
-    ioctree_.setMinExtent(cfg.ioctree.min_extent);
+    ioctree_.set_bucket_size(cfg.ioctree.bucket_size);
+    ioctree_.set_down_size(cfg.ioctree.downsample);
+    ioctree_.set_min_extent(cfg.ioctree.min_extent);
+    ioctree_.set_order(cfg.ioctree.order);
   };
   
   ~Manager() = default;
-
 
   void imu_callback(const sensor_msgs::Imu::ConstPtr& msg) {
 
@@ -127,8 +126,8 @@ public:
 
   }
 
-
   void lidar_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
+
 PROFC_NODE("LiDAR Callback")
 
     Config& cfg = Config::getInstance();
@@ -191,7 +190,13 @@ PROFC_NODE("LiDAR Callback")
   mtx_state_.lock();
 
     PointCloudT::Ptr deskewed = deskew(raw, state_, interpolated, offset, sweep_time);
-    PointCloudT::Ptr downsampled = voxel_grid(deskewed);
+
+    PointCloudT::Ptr downsampled(boost::make_shared<PointCloudT>());
+    *downsampled = *deskewed;
+
+    if (cfg.filters.voxel_grid.active)
+      downsampled = voxel_grid(deskewed);
+    
     PointCloudT::Ptr processed = process(downsampled);
 
     if (processed->points.empty()) {
@@ -200,7 +205,7 @@ PROFC_NODE("LiDAR Callback")
     }
 
     state_.update(processed, ioctree_);
-    Eigen::Affine3f T = (state_.affine3d() * state_.I2L_affine3d()).cast<float>();
+    Eigen::Affine3f T = state_.affine3f() * state_.I2L_affine3f();
 
   mtx_state_.unlock();
 
@@ -220,8 +225,8 @@ PROFC_NODE("LiDAR Callback")
     }
 
     // Update map
-    if (state_.stamp - first_imu_stamp_ < 58)
-      ioctree_.update(processed->points);
+    if (state_.stamp - first_imu_stamp_ < 60)
+    ioctree_.update(processed->points, true);
 
     if (cfg.verbose)
       PROFC_PRINT()

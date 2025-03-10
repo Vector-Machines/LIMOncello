@@ -1,5 +1,5 @@
 <launch>
-    <node pkg="limoncello" type="limoncello" name="limovelo" output="screen" >
+    <node pkg="limoncello" type="limoncello" name="limoncello" output="screen" >
         <rosparam file="$(find limoncello)/config/velodyne.yaml" />
     </node>
 </launch>

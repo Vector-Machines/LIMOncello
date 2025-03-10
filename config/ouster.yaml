@@ -3,8 +3,8 @@
 topics:
   input:
     lidar: /os1_cloud_node/points
-    imu:   /os1_cloud_node/imu
-    # imu: /EL/Sensors/vectornav/IMU
+    imu: /os1_cloud_node/imu
+    # imu:   /ouster/imu
   output:
     state: state  
     frame: full_pcl
@@ -27,7 +27,7 @@ sensors:
     gravity_align: true     # estimate gravity vector
     accel: true             # estimate lin. accel. bias
     gyro: true              # estimate ang. vel. bias
-    time: 1.               # time to estimate (during this time, the 
+    time: 3.               # time to estimate (during this time, the 
                            # robot must be at stand still)
 
   time_offset: true # whether to take into account a possible sync offset
@@ -40,15 +40,16 @@ sensors:
       R: [0., 0., 0.]        # roll, pitch, yaw [deg]
 
     lidar2baselink:
-      t: [0.006253, -0.011775, 0.98007645] # (x, y, z) [meters]
-      R: [0.333483, -0.00, -0.0038787]   # roll, pitch, yaw [deg]
+      t: [0.006253, -0.011775, 0.007645] # (x, y, z) [meters]
+      R: [0, 0, 0]
+      # R: [0.333483, -0.00, -0.0038787]   # roll, pitch, yaw [deg]
       # R: [1.0000263, 0.4999751, -0.0043634]
     gravity: 9.80304
 
 
   intrinsics:
     accel_bias: [ 0.0001, 0.0001, 0.0001 ]  # [m/s^2]
-    gyro_bias:  [ 0.0001, 0.0001, 0.001 ]  # [rad/s]
+    gyro_bias:  [ 0.001, 0.001, 0.001 ]  # [rad/s]
     sm: [ 1.,  0.,  0.,
           0.,  1.,  0.,
           0.,  0.,  1. ]
@@ -67,6 +68,7 @@ sensors:
   
 filters:
   voxel_grid:
+    active: true
     leaf_size: [ .5, .5, .5 ]
 
   min_distance: # sphere crop
@@ -87,7 +89,7 @@ IKFoM:  # Iterative Kalman Filter on Manifolds lib
   max_iters: 10  # max num of iterations of the IESEKF
   tolerance: 0.001                      
   estimate_extrinsics: false
-  lidar_noise: 0.0005
+  lidar_noise: 0.001
 
   covariance:
     gyro: 6.01e-4        # [m^2/s^2]
@@ -96,13 +98,14 @@ IKFoM:  # Iterative Kalman Filter on Manifolds lib
     bias_accel: 3.38e-4  # [rad/s * sqrt(s)]
   
   plane:                     # plane features for point to plane ICP
-    points: 15                # num of points that constitute a plane
-    max_sqrt_dist: 1.0       # [m] if a neighor exceeds is too far the plane is not valid
-    plane_threshold: 0.10  # [m] max distance from point to plane to be 
+    points: 5                # num of points that constitute a plane
+    max_sqrt_dist: 2.0       # [m] if a neighor exceeds is too far the plane is not valid
+    plane_threshold: 5.0e-2  # [m] max distance from point to plane to be 
                              # considered a valid plane 
     
 
 iOctree:
+  order: false
   min_extent: 0.2
   bucket_size: 2
   downsample: true

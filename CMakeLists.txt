@@ -23,7 +23,6 @@ find_package(PCL 1.8 REQUIRED)
 
 # Find ROS packages
 find_package(catkin REQUIRED COMPONENTS
-  std_msgs
   roscpp
   pcl_ros
   sensor_msgs
@@ -42,7 +41,6 @@ include_directories(
 # Catkin package configuration
 catkin_package(
   CATKIN_DEPENDS
-    std_msgs
     roscpp
     pcl_ros
     sensor_msgs

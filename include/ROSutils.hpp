@@ -178,6 +178,7 @@ void fill_config(Config& cfg, ros::NodeHandle& nh) {
 
 
   // FILTERS
+  nh.getParam("filters/voxel_grid/active", cfg.filters.voxel_grid.active);
   nh.getParam("filters/voxel_grid/leaf_size", tmp);
   cfg.filters.voxel_grid.leaf_size = Eigen::Vector4d(tmp[0], tmp[1], tmp[2], 1.);
 
@@ -211,6 +212,7 @@ void fill_config(Config& cfg, ros::NodeHandle& nh) {
 
 
   // iOctree
+  nh.getParam("iOctree/order",       cfg.ioctree.order);
   nh.getParam("iOctree/min_extent",  cfg.ioctree.min_extent);
   nh.getParam("iOctree/bucket_size", cfg.ioctree.bucket_size);
   nh.getParam("iOctree/downsample",  cfg.ioctree.downsample);
