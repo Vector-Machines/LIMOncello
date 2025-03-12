@@ -200,7 +200,7 @@ PROFC_NODE("LiDAR Callback")
     }
 
     state_.update(processed, ioctree_);
-    Eigen::Affine3f T = state_.affine3f() * state_.I2L_affine3f();
+    Eigen::Affine3f T = (state_.affine3d() * state_.I2L_affine3d()).cast<float>();
 
   mtx_state_.unlock();
 

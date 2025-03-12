@@ -65,7 +65,6 @@ sensors:
   
 filters:
   voxel_grid:
-    active: true
     leaf_size: [ .5, .5, .5 ]
 
   min_distance: # sphere crop
@@ -102,7 +101,6 @@ IKFoM:  # Iterative Kalman Filter on Manifolds lib
     
 
 iOctree:
-  order: false
   min_extent: 0.2
   bucket_size: 2
   downsample: true

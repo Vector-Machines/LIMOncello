@@ -180,8 +180,8 @@ PROFC_NODE("update")
           indices.end(),
           [&](int i) {
             PointT pt = cloud->points[i];
-            Eigen::Vector3f p(pt.x, pt.y, pt.z);
-            Eigen::Vector3f g = s.affine3f() * s.I2L_affine3f() * p; // global coords 
+            Eigen::Vector3d p = pt.getVector3fMap().cast<double>();
+            Eigen::Vector3d g = s.affine3d() * s.I2L_affine3d() * p; // global coords 
 
             std::vector<pcl::PointXYZ> neighbors;
             std::vector<float> pointSearchSqDis;
@@ -194,23 +194,20 @@ PROFC_NODE("update")
                 or pointSearchSqDis.back() > cfg.ikfom.plane.max_sqrt_dist)
                   return;
             
-            Eigen::Vector4f p_abcd = Eigen::Vector4f::Zero();
+            Eigen::Vector4d p_abcd = Eigen::Vector4d::Zero();
             if (not estimate_plane(p_abcd, neighbors, cfg.ikfom.plane.plane_threshold))
               return;
             
             chosen[i] = true;
-            matches[i] = Match(p, g, p_abcd);
+            matches[i] = Match(p, p_abcd);
           }
         ); // end for_each
+
+        first_matches.clear();
 
         for (int i = 0; i < N; i++) {
           if (chosen[i])
             first_matches.push_back(matches[i]);        
-        }
-
-      } else {
-        for (auto& match : first_matches) {
-          match.global = s.affine3f() * s.I2L_affine3f() * match.local; 
         }
       }
 
@@ -226,21 +223,14 @@ PROFC_NODE("update")
         indices.begin(),
         indices.end(),
         [&](int i) {
-          Match match = first_matches[i];
-          Eigen::Vector3d p_lidar = match.local.cast<double>();
-          Eigen::Vector3d p_imu   = (s.I2L_affine3f() * match.local).cast<double>();
-
-          // Normal vector to plane
-          Eigen::Vector3d n = match.n.head(3).cast<double>();
+          Match m = first_matches[i];
 
           // Jacobian of SGal3 act.
           Eigen::Matrix<double, 3, DoFObs> J_s; // Jacobian of state (pos., vel., rot., t)
-          s.X.element<0>().act(p_imu, J_s);
+          Eigen::Vector3d g = s.X.element<0>().act(s.I2L_affine3d() * m.p, J_s);
 
-          Eigen::Matrix<double, 1, DoFObs> A = n.transpose() * J_s; 
-
-          H.block<1, DoFObs>(i, 0) << A;
-          z(i) = -match.dist2plane();
+          H.block<1, DoFObs>(i, 0) << m.n.head(3).transpose() * J_s;;
+          z(i) = -Match::dist2plane(m.n, g);
         }
       ); // end for_each
 
@@ -296,36 +286,29 @@ PROFC_NODE("update")
   inline Eigen::Vector3d p()       const { return X.element<0>().translation();             }
   inline Eigen::Matrix3d R()       const { return X.element<0>().quat().toRotationMatrix(); }
   inline Eigen::Quaterniond quat() const { return X.element<0>().quat();                    }
-  // inline Eigen::Matrix3d I2L_R()   const { return X.element<1>().quat().toRotationMatrix(); }
-  // inline Eigen::Vector3d I2L_t()   const { return X.element<1>().translation();             }
   inline Eigen::Vector3d v()       const { return X.element<0>().linearVelocity();          }
+  inline double t()                const { return X.element<0>().t();                       }
   inline Eigen::Vector3d b_w()     const { return X.element<1>().coeffs();                  }
   inline Eigen::Vector3d b_a()     const { return X.element<2>().coeffs();                  }
   inline Eigen::Vector3d g()       const { return X.element<3>().coeffs();                  }
 
 
-  inline Eigen::Affine3f affine3f() const {
+  inline Eigen::Affine3d affine3d() const {
     Eigen::Affine3d T;
     T.linear() = R();
     T.translation() = p();
-    return T.cast<float>();
+    return T;
   }
 
-  inline Eigen::Affine3f I2L_affine3f() const {
-    return Config::getInstance().sensors.extrinsics.lidar2baselink_T.cast<float>();
+  inline Eigen::Affine3d I2L_affine3d() const {
+    return Config::getInstance().sensors.extrinsics.lidar2baselink_T;
   }
 
 // Setters
-  // Eigen::Vector3d p()     { return X.element<0>.coeffs();   }
-  // Eigen::Vector3d R()     { return X.element<1>.rotation(); }
-  void quat(const Eigen::Quaterniond& q) { ; }
-
-  // Eigen::Vector3d I2L_R() { return X.element<2>.rotation(); }
-  // Eigen::Vector3d I2L_t() { return X.element<3>.coeffs();   }
-  // Eigen::Vector3d v()     { return X.element<4>.coeffs();   }
-  void b_w(const Eigen::Vector3d& in) { X.element<1>() = manif::R3d(in); }
-  void b_a(const Eigen::Vector3d& in) { X.element<2>() = manif::R3d(in); }
-  void g(const Eigen::Vector3d& in)   { X.element<3>() = manif::R3d(in); }
+  void quat(const Eigen::Quaterniond& q) { X.element<0>() = manif::SGal3d(p(), q, v(), t()); }
+  void b_w(const Eigen::Vector3d& in)    { X.element<1>() = manif::R3d(in);                  }
+  void b_a(const Eigen::Vector3d& in)    { X.element<2>() = manif::R3d(in);                  }
+  void g(const Eigen::Vector3d& in)      { X.element<3>() = manif::R3d(in);                  }
 
 };
 
