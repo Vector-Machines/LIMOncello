@@ -191,13 +191,7 @@ PROFC_NODE("LiDAR Callback")
   mtx_state_.lock();
 
     PointCloudT::Ptr deskewed = deskew(raw, state_, interpolated, offset, sweep_time);
-
-    PointCloudT::Ptr downsampled(boost::make_shared<PointCloudT>());
-    *downsampled = *deskewed;
-
-    if (cfg.filters.voxel_grid.active)
-      downsampled = voxel_grid(deskewed);
-    
+    PointCloudT::Ptr downsampled = voxel_grid(deskewed);
     PointCloudT::Ptr processed = process(downsampled);
 
     if (processed->points.empty()) {
@@ -226,7 +220,8 @@ PROFC_NODE("LiDAR Callback")
     }
 
     // Update map
-    ioctree_.update(processed->points);
+    if (state_.stamp - first_imu_stamp_ < 50)
+      ioctree_.update(processed->points);
 
     if (cfg.verbose)
       PROFC_PRINT()
