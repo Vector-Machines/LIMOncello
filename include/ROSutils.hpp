@@ -105,11 +105,12 @@ void fill_config(Config& cfg, ros::NodeHandle& nh) {
   nh.getParam("debug",   cfg.debug);
 
   // TOPICS
-  nh.getParam("topics/input/lidar",  cfg.topics.input.lidar);
-  nh.getParam("topics/input/imu",    cfg.topics.input.imu);
-  nh.getParam("topics/output/state", cfg.topics.output.state);
-  nh.getParam("topics/output/frame", cfg.topics.output.frame);
-  nh.getParam("topics/frame_id",     cfg.topics.frame_id);
+  nh.getParam("topics/input/lidar",               cfg.topics.input.lidar);
+  nh.getParam("topics/input/imu",                 cfg.topics.input.imu);
+  nh.getParam("topics/input/stop_ioctree_udate",  cfg.topics.input.stop_ioctree_udate);
+  nh.getParam("topics/output/state",              cfg.topics.output.state);
+  nh.getParam("topics/output/frame",              cfg.topics.output.frame);
+  nh.getParam("topics/frame_id",                  cfg.topics.frame_id);
 
 
   // SENSORS
@@ -131,7 +132,6 @@ void fill_config(Config& cfg, ros::NodeHandle& nh) {
 
   cfg.sensors.extrinsics.imu2baselink_T.setIdentity();
   cfg.sensors.extrinsics.imu2baselink_T.translate(Eigen::Vector3d(tmp[0], tmp[1], tmp[2]));
-  cfg.sensors.extrinsics.imu2baselink.t = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);
 
   nh.getParam("sensors/extrinsics/imu2baselink/R", tmp);
   Eigen::Matrix3d R_imu = (
@@ -141,15 +141,11 @@ void fill_config(Config& cfg, ros::NodeHandle& nh) {
     ).toRotationMatrix();
 
   cfg.sensors.extrinsics.imu2baselink_T.rotate(R_imu);
-  cfg.sensors.extrinsics.imu2baselink.roll  = tmp[0] * M_PI/180.;
-  cfg.sensors.extrinsics.imu2baselink.pitch = tmp[1] * M_PI/180.;
-  cfg.sensors.extrinsics.imu2baselink.yaw   = tmp[2] * M_PI/180.;
 
   nh.getParam("sensors/extrinsics/lidar2baselink/t", tmp);
 
   cfg.sensors.extrinsics.lidar2baselink_T.setIdentity();
   cfg.sensors.extrinsics.lidar2baselink_T.translate(Eigen::Vector3d(tmp[0], tmp[1], tmp[2]));
-  cfg.sensors.extrinsics.lidar2baselink.t = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);
 
   nh.getParam("sensors/extrinsics/lidar2baselink/R", tmp);
   Eigen::Matrix3d R_lidar = (
@@ -159,9 +155,6 @@ void fill_config(Config& cfg, ros::NodeHandle& nh) {
     ).toRotationMatrix();
 
   cfg.sensors.extrinsics.lidar2baselink_T.rotate(R_lidar);
-  cfg.sensors.extrinsics.lidar2baselink.roll  = tmp[0] * M_PI/180.;
-  cfg.sensors.extrinsics.lidar2baselink.pitch = tmp[1] * M_PI/180.;
-  cfg.sensors.extrinsics.lidar2baselink.yaw   = tmp[2] * M_PI/180.;
 
   nh.getParam("sensors/extrinsics/gravity", cfg.sensors.extrinsics.gravity);
 

@@ -23,6 +23,7 @@ struct Config {
   	struct {
   		std::string lidar;
   		std::string imu;
+			std::string stop_ioctree_udate;
   	} input;
 
   	struct {
@@ -58,17 +59,6 @@ struct Config {
   		Eigen::Affine3d imu2baselink_T;
   		Eigen::Affine3d lidar2baselink_T;
   		float gravity;
-
-      struct {
-        double roll, pitch, yaw;
-        Eigen::Vector3d t;
-      } lidar2baselink;
-
-      struct {
-        double roll, pitch, yaw;
-        Eigen::Vector3d t;
-      } imu2baselink;
-
   	} extrinsics;
 
   	struct {

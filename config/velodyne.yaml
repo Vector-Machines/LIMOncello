@@ -4,6 +4,7 @@ topics:
   input:
     lidar: /velodyne_points
     imu: /EL/Sensors/vectornav/IMU
+    stop_ioctree_udate: /stop
   output:
     state: state  
     frame: full_pcl

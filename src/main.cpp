@@ -5,12 +5,11 @@
 
 #include <ros/ros.h>
 
-#include <tf2/convert.h>
-
 #include <geometry_msgs/Vector3.h>
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/PointCloud2.h>
-#include "std_msgs/Float32.h"
+#include <std_msgs/Bool.h>
+
 
 #include "Core/Octree.hpp"
 #include "Core/State.hpp"
@@ -21,12 +20,8 @@
 #include "ROSutils.hpp"
 
 
-ros::Publisher pub_state, pub_frame, pub_raw, 
-               pub_deskewed, pub_downsampled, pub_to_match;
-
-
 class Manager {
-  State state_;
+  State  state_;
   States state_buffer_;
   
   Imu prev_imu_;
@@ -39,13 +34,23 @@ class Manager {
 
   std::condition_variable cv_prop_stamp_;
 
-  ros::NodeHandle nh_;
-
   charlie::Octree ioctree_;
+  bool stop_ioctree_update_;
+
+  ros::Publisher pub_state_, 
+                 pub_frame_, 
+                 pub_raw_, 
+                 pub_deskewed_, 
+                 pub_downsampled_, 
+                 pub_to_match_;
 
   
 public:
-  Manager() : first_imu_stamp_(-1.0), state_buffer_(1000), ioctree_() {
+  Manager(ros::NodeHandle& nh) : first_imu_stamp_(-1.0), 
+                                       state_buffer_(1000), 
+                                       stop_ioctree_update_(false),
+                                       ioctree_() {
+
     Config& cfg = Config::getInstance();
 
     imu_calibrated_ = not (cfg.sensors.calibration.gravity_align 
@@ -55,6 +60,16 @@ public:
     ioctree_.setBucketSize(cfg.ioctree.bucket_size);
     ioctree_.setDownsample(cfg.ioctree.downsample);
     ioctree_.setMinExtent(cfg.ioctree.min_extent);
+
+    // Publishers
+    pub_state_ = nh.advertise<nav_msgs::Odometry>(cfg.topics.output.state, 10);
+    pub_frame_ = nh.advertise<sensor_msgs::PointCloud2>(cfg.topics.output.frame, 10);
+
+    // Debug only
+    pub_raw_         = nh.advertise<sensor_msgs::PointCloud2>("debug/raw",         10);
+    pub_deskewed_    = nh.advertise<sensor_msgs::PointCloud2>("debug/deskewed",    10);
+    pub_downsampled_ = nh.advertise<sensor_msgs::PointCloud2>("debug/downsampled", 10);
+    pub_to_match_    = nh.advertise<sensor_msgs::PointCloud2>("debug/to_match",    10);
   };
   
   ~Manager() = default;
@@ -104,7 +119,11 @@ public:
 
     } else {
       double dt = imu.stamp - prev_imu_.stamp;
-      dt = (dt < 0 or dt > 0.1) ? 1./cfg.sensors.imu.hz : dt;
+
+      if (dt < 0)
+        ROS_ERROR("IMU timestamps not correct");
+
+      dt = (dt < 0 or dt >= imu.stamp) ? 1./cfg.sensors.imu.hz : dt;
 
       imu = imu2baselink(imu, dt);
 
@@ -122,7 +141,7 @@ public:
 
       cv_prop_stamp_.notify_one();
 
-      pub_state.publish(toROS(state_));
+      pub_state_.publish(toROS(state_));
     }
 
   }
@@ -160,7 +179,7 @@ PROFC_NODE("LiDAR Callback")
 
     // Wait for state buffer
     double start_stamp = point_time(raw->points.front(), sweep_time) + offset;
-    double end_stamp = point_time(raw->points.back(), sweep_time) + offset;
+    double end_stamp   = point_time(raw->points.back(), sweep_time) + offset;
 
     if (state_buffer_.front().stamp < end_stamp) {
       std::cout << std::setprecision(20);
@@ -177,9 +196,7 @@ PROFC_NODE("LiDAR Callback")
 
 
   mtx_buffer_.lock();
-    States interpolated = filter_states(state_buffer_,
-                                        start_stamp,
-                                        end_stamp);
+    States interpolated = filter_states(state_buffer_, start_stamp, end_stamp);
   mtx_buffer_.unlock();
 
     if (start_stamp < interpolated.front().stamp or interpolated.size() == 0) {
@@ -190,9 +207,9 @@ PROFC_NODE("LiDAR Callback")
 
   mtx_state_.lock();
 
-    PointCloudT::Ptr deskewed = deskew(raw, state_, interpolated, offset, sweep_time);
+    PointCloudT::Ptr deskewed    = deskew(raw, state_, interpolated, offset, sweep_time);
     PointCloudT::Ptr downsampled = voxel_grid(deskewed);
-    PointCloudT::Ptr processed = process(downsampled);
+    PointCloudT::Ptr processed   = process(downsampled);
 
     if (processed->points.empty()) {
       ROS_ERROR("[LIMONCELLO] Processed & downsampled cloud is empty!");
@@ -209,23 +226,32 @@ PROFC_NODE("LiDAR Callback")
     pcl::transformPointCloud(*processed, *processed, T);
 
     // Publish
-    pub_state.publish(toROS(state_));
-    pub_frame.publish(toROS(global));
+    pub_state_.publish(toROS(state_));
+    pub_frame_.publish(toROS(global));
 
     if (cfg.debug) {
-      pub_raw.publish(toROS(raw));
-      pub_deskewed.publish(toROS(deskewed));
-      pub_downsampled.publish(toROS(downsampled));
-      pub_to_match.publish(toROS(processed));
+      pub_raw_.publish(toROS(raw));
+      pub_deskewed_.publish(toROS(deskewed));
+      pub_downsampled_.publish(toROS(downsampled));
+      pub_to_match_.publish(toROS(processed));
     }
 
     // Update map
-    if (state_.stamp - first_imu_stamp_ < 50)
+    if (not stop_ioctree_update_)
       ioctree_.update(processed->points);
 
     if (cfg.verbose)
       PROFC_PRINT()
   }
+
+
+  void stop_update_callback(const std_msgs::Bool::ConstPtr& msg) {
+    if (not stop_ioctree_update_ and msg->data) {
+      stop_ioctree_update_ = msg->data;
+      ROS_INFO("Stopping ioctree updates from now onwards");
+    }
+  }
+
 };
 
 
@@ -236,24 +262,12 @@ int main(int argc, char** argv) {
   ros::init(argc, argv, "limoncello");
   ros::NodeHandle nh("~");
   
-
   // Setup config parameters.
   Config& cfg = Config::getInstance();
   fill_config(cfg, nh); 
 
   // Initialize manager (reads from config)
-  Manager manager = Manager();
-
-  // Publishers
-  pub_state = nh.advertise<nav_msgs::Odometry>(cfg.topics.output.state, 10);
-  pub_frame = nh.advertise<sensor_msgs::PointCloud2>(cfg.topics.output.frame, 10);
-
-  // Debug only
-  pub_raw         = nh.advertise<sensor_msgs::PointCloud2>("debug/raw",         10);
-  pub_deskewed    = nh.advertise<sensor_msgs::PointCloud2>("debug/deskewed",    10);
-  pub_downsampled = nh.advertise<sensor_msgs::PointCloud2>("debug/downsampled", 10);
-  pub_to_match    = nh.advertise<sensor_msgs::PointCloud2>("debug/to_match",    10);
-
+  Manager manager = Manager(nh);
 
   // Subscribers
   ros::Subscriber lidar_sub = nh.subscribe(cfg.topics.input.lidar,
@@ -267,6 +281,12 @@ int main(int argc, char** argv) {
                                          &Manager::imu_callback,
                                          &manager,
                                          ros::TransportHints().tcpNoDelay());
+
+  ros::Subscriber stop_sub = nh.subscribe(cfg.topics.input.stop_ioctree_udate,
+                                          10,
+                                          &Manager::stop_update_callback,
+                                          &manager);
+
 
   ros::AsyncSpinner spinner(0);
   spinner.start();

@@ -51,7 +51,7 @@ struct State {
 
   double stamp;
 
-  State() : stamp(0.0) { 
+  State() : stamp(-1.0) { 
     Config& cfg = Config::getInstance();
     Eigen::Vector3d zero_vec = Eigen::Vector3d(0., 0., 0.);
                                                                 //                   Tanget       
