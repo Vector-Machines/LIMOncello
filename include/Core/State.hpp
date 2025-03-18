@@ -81,15 +81,17 @@ struct State {
 
   void predict(const Imu& imu, const double& dt) {
 PROFC_NODE("predict")
-
+    
     ProcessMatrix Gx, Gf; // Adjoint_X(u)^{-1}, J_r(u)  Sola-18, [https://arxiv.org/abs/1812.01537]
-    X = X.plus(f(imu.lin_accel, imu.ang_vel, dt) * dt, Gx, Gf);
+    BundleT X_tmp = X.plus(f(imu.lin_accel, imu.ang_vel, dt) * dt, Gx, Gf);
 
-   // Update covariance
+    // Update covariance
     ProcessMatrix Fx = Gx + Gf * df_dx(imu, dt) * dt; // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (26)
     MappingMatrix Fw = Gf * df_dw(imu, dt) * dt;      // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (27)
 
     P = Fx * P * Fx.transpose() + Fw * Q * Fw.transpose(); 
+
+    X = X_tmp;
 
     // Save info
     a = imu.lin_accel;
