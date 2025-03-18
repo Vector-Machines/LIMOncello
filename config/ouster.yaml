@@ -28,10 +28,10 @@ sensors:
     gravity_align: true     # estimate gravity vector
     accel: true             # estimate lin. accel. bias
     gyro: true              # estimate ang. vel. bias
-    time: 1.                # time to estimate (during this time, the 
+    time: 3.                # time to estimate (during this time, the 
                             # robot must be at stand still)
 
-  time_offset: true # whether to take into account a possible sync offset
+  time_offset: false # whether to take into account a possible sync offset
                     # between IMU and LiDAR (set to true if they are not properly in sync)
   TAI_offset: 0.
 
@@ -88,10 +88,9 @@ filters:
 
 IKFoM:  # Iterative Kalman Filter on Manifolds lib
   query_iters: 3 # number of iterations doing KNN from max iterations 
-  max_iters: 3  # max num of iterations of the IESEKF
-  tolerance: 0.001                      
-  estimate_extrinsics: false
-  lidar_noise: 0.001
+  max_iters: 10  # max num of iterations of the IESEKF
+  tolerance: 0.0001                      
+  lidar_noise: 0.0005
 
   covariance:
     gyro: 6.01e-4        # [m^2/s^2]
@@ -107,7 +106,6 @@ IKFoM:  # Iterative Kalman Filter on Manifolds lib
     
 
 iOctree:
-  order: false
   min_extent: 0.2
   bucket_size: 2
   downsample: true

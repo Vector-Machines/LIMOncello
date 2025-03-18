@@ -189,7 +189,6 @@ void fill_config(Config& cfg, ros::NodeHandle& nh) {
   nh.getParam("IKFoM/query_iters",         cfg.ikfom.query_iters);
   nh.getParam("IKFoM/max_iters",           cfg.ikfom.max_iters);
   nh.getParam("IKFoM/tolerance",           cfg.ikfom.tolerance);
-  nh.getParam("IKFoM/estimate_extrinsics", cfg.ikfom.estimate_extrinsics);
   nh.getParam("IKFoM/lidar_noise",         cfg.ikfom.lidar_noise);
 
   
