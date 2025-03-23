@@ -2,9 +2,10 @@
 
 topics:
   input:
-    lidar: /ouster/pointss 
-    imu:   /ouster/imu 
-    # imu: /EL/Sensors/vectornav/IMU
+    lidar: /ouster/pointss
+    # imu:   /ouster/imu
+    stop_ioctree_udate: /stop
+    imu: /EL/Sensors/vectornav/IMU
   output:
     state: state  
     frame: full_pcl
@@ -12,7 +13,7 @@ topics:
 
 
 verbose: true   # print performance board
-debug: false     # fill useful intermediate pcl (deskewed, processed ...) 
+debug: false    # fill useful intermediate pcl (deskewed, processed ...) 
                 # for visualizing purposes
 
 sensors:
@@ -21,14 +22,14 @@ sensors:
     end_of_sweep: false # whether the sweep reference time is w.r.t. the
                         # start or the end of the scan (only applies to VELODYNE/OUSTER)
   imu:
-    hz: 100
+    hz: 400
 
   calibration:  # automatic IMU calibration (if all set to false, no calibration will be done)
     gravity_align: true     # estimate gravity vector
     accel: true             # estimate lin. accel. bias
     gyro: true              # estimate ang. vel. bias
-    time: 1.5               # time to estimate (during this time, the 
-                           # robot must be at stand still)
+    time: 1.5                # time to estimate (during this time, the 
+                            # robot must be at stand still)
 
   time_offset: true # whether to take into account a possible sync offset
                     # between IMU and LiDAR (set to true if they are not properly in sync)
@@ -37,11 +38,13 @@ sensors:
   extrinsics:
     imu2baselink:
       t: [0.0, 0.0, 0.98 ]  # (x, y, z) [meters]
-      R: [0., 0., 0.]        # roll, pitch, yaw [deg]
+      R: [0., 0., 0.]       # roll, pitch, yaw [deg]
 
     lidar2baselink:
       t: [0.006253, -0.011775, 0.98007645] # (x, y, z) [meters]
-      R: [0.333483, -0.00, -0.0038787]   # roll, pitch, yaw [deg]
+      R: [0., 0., 0.]     # roll, pitch, yaw [deg]
+
+      # R: [0.333483, -0.00, -0.0038787]     # roll, pitch, yaw [deg]
       # R: [1.0000263, 0.4999751, -0.0043634]
     gravity: 9.80304
 
@@ -79,32 +82,30 @@ filters:
     value: 180  # [deg]
   
   rate_sampling: # quick downsample
-    active: true
+    active: false
     value: 2
 
 
 IKFoM:  # Iterative Kalman Filter on Manifolds lib
-  query_iters: 2 # number of iterations doing KNN from max iterations 
-  max_iters: 20  # max num of iterations of the IESEKF
-  tolerance: 0.001                      
-  estimate_extrinsics: false
-  lidar_noise: 0.001
+  query_iters: 3 # number of iterations doing KNN from max iterations 
+  max_iters: 10  # max num of iterations of the IESEKF
+  tolerance: 0.0001                      
+  lidar_noise: 0.0005
 
-  covariance:            # Allan noise
+  covariance:
     gyro: 6.01e-4        # [m^2/s^2]
     accel: 1.53e-2       # [rad^2]
     bias_gyro: 1.54e-5   # [m^2/s^2 * sqrt(s)]
     bias_accel: 3.38e-4  # [rad/s * sqrt(s)]
   
   plane:                     # plane features for point to plane ICP
-    points: 5                # num of points that constitute a plane
-    max_sqrt_dist: 2.0       # [m] if a neighor exceeds is too far the plane is not valid
-    plane_threshold: 5.0e-2  # [m] max distance from point to plane to be 
+    points: 15               # num of points that constitute a plane
+    max_sqrt_dist: 1.0       # [m] if a neighor exceeds is too far the plane is not valid
+    plane_threshold: 0.1     # [m] max distance from point to plane to be 
                              # considered a valid plane 
     
 
 iOctree:
-  order: false
   min_extent: 0.2
   bucket_size: 2
   downsample: true

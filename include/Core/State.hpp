@@ -308,7 +308,6 @@ PROFC_NODE("update")
 
 // Setters
   void quat(const Eigen::Quaterniond& q) { ; }
-  //X.element<0>() = manif::SGal3d(p(), q, v(), t()); }
   void b_w(const Eigen::Vector3d& in)    { X.element<1>() = manif::R3d(in);                  }
   void b_a(const Eigen::Vector3d& in)    { X.element<2>() = manif::R3d(in);                  }
   void g(const Eigen::Vector3d& in)      { X.element<3>() = manif::R3d(in);                  }
