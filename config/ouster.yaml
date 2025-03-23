@@ -2,9 +2,8 @@
 
 topics:
   input:
-    lidar: /os1_cloud_node/points
-    imu:   /os1_cloud_node/imu
-    stop_ioctree_udate: /stop
+    lidar: /ouster/pointss 
+    imu:   /ouster/imu 
     # imu: /EL/Sensors/vectornav/IMU
   output:
     state: state  
@@ -13,7 +12,7 @@ topics:
 
 
 verbose: true   # print performance board
-debug: false    # fill useful intermediate pcl (deskewed, processed ...) 
+debug: false     # fill useful intermediate pcl (deskewed, processed ...) 
                 # for visualizing purposes
 
 sensors:
@@ -28,23 +27,21 @@ sensors:
     gravity_align: true     # estimate gravity vector
     accel: true             # estimate lin. accel. bias
     gyro: true              # estimate ang. vel. bias
-    time: 3.                # time to estimate (during this time, the 
-                            # robot must be at stand still)
+    time: 1.5               # time to estimate (during this time, the 
+                           # robot must be at stand still)
 
-  time_offset: false # whether to take into account a possible sync offset
+  time_offset: true # whether to take into account a possible sync offset
                     # between IMU and LiDAR (set to true if they are not properly in sync)
   TAI_offset: 0.
 
   extrinsics:
     imu2baselink:
       t: [0.0, 0.0, 0.98 ]  # (x, y, z) [meters]
-      R: [0., 0., 0.]       # roll, pitch, yaw [deg]
+      R: [0., 0., 0.]        # roll, pitch, yaw [deg]
 
     lidar2baselink:
       t: [0.006253, -0.011775, 0.98007645] # (x, y, z) [meters]
-      R: [0., 0., 0.]     # roll, pitch, yaw [deg]
-
-      # R: [0.333483, -0.00, -0.0038787]     # roll, pitch, yaw [deg]
+      R: [0.333483, -0.00, -0.0038787]   # roll, pitch, yaw [deg]
       # R: [1.0000263, 0.4999751, -0.0043634]
     gravity: 9.80304
 
@@ -82,30 +79,32 @@ filters:
     value: 180  # [deg]
   
   rate_sampling: # quick downsample
-    active: false
+    active: true
     value: 2
 
 
 IKFoM:  # Iterative Kalman Filter on Manifolds lib
-  query_iters: 3 # number of iterations doing KNN from max iterations 
-  max_iters: 10  # max num of iterations of the IESEKF
-  tolerance: 0.0001                      
-  lidar_noise: 0.0005
+  query_iters: 2 # number of iterations doing KNN from max iterations 
+  max_iters: 20  # max num of iterations of the IESEKF
+  tolerance: 0.001                      
+  estimate_extrinsics: false
+  lidar_noise: 0.001
 
-  covariance:
+  covariance:            # Allan noise
     gyro: 6.01e-4        # [m^2/s^2]
     accel: 1.53e-2       # [rad^2]
     bias_gyro: 1.54e-5   # [m^2/s^2 * sqrt(s)]
     bias_accel: 3.38e-4  # [rad/s * sqrt(s)]
   
   plane:                     # plane features for point to plane ICP
-    points: 15               # num of points that constitute a plane
-    max_sqrt_dist: 1.0       # [m] if a neighor exceeds is too far the plane is not valid
-    plane_threshold: 0.1     # [m] max distance from point to plane to be 
+    points: 5                # num of points that constitute a plane
+    max_sqrt_dist: 2.0       # [m] if a neighor exceeds is too far the plane is not valid
+    plane_threshold: 5.0e-2  # [m] max distance from point to plane to be 
                              # considered a valid plane 
     
 
 iOctree:
+  order: false
   min_extent: 0.2
   bucket_size: 2
   downsample: true
