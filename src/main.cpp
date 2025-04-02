@@ -3,14 +3,12 @@
 
 #include <Eigen/Dense>
 
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 
-#include <tf2/convert.h>
+#include <sensor_msgs/msg/imu.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 
-#include <geometry_msgs/Vector3.h>
-#include <sensor_msgs/Imu.h>
-#include <sensor_msgs/PointCloud2.h>
-#include "std_msgs/Float32.h"
+#include <nav_msgs/msg/odometry.hpp>
 
 #include "Core/Octree.hpp"
 #include "Core/State.hpp"
@@ -21,11 +19,8 @@
 #include "ROSutils.hpp"
 
 
-ros::Publisher pub_state, pub_frame, pub_raw, 
-               pub_deskewed, pub_downsampled, pub_to_match;
+class Manager : public rclcpp::Node {
 
-
-class Manager {
   State state_;
   States state_buffer_;
   
@@ -39,14 +34,34 @@ class Manager {
 
   std::condition_variable cv_prop_stamp_;
 
-  ros::NodeHandle nh_;
-
   charlie::Octree ioctree_;
+
+  // ROS
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr lidar_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr         imu_sub_;
+
+  // Publishers
+  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_state;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_frame;
+
+  // Debug
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_raw;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_deskewed;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_downsampled;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_to_match;
 
   
 public:
-  Manager() : first_imu_stamp_(-1.0), state_buffer_(1000), ioctree_() {
+  Manager() : Node("limoncello", 
+                   rclcpp::NodeOptions()
+                      .allow_undeclared_parameters(true)
+                      .automatically_declare_parameters_from_overrides(true)),
+              first_imu_stamp_(-1.0), 
+              state_buffer_(1000), 
+              ioctree_() {
+
     Config& cfg = Config::getInstance();
+    fill_config(cfg, this);
 
     imu_calibrated_ = not (cfg.sensors.calibration.gravity_align 
                            or cfg.sensors.calibration.accel
@@ -55,12 +70,44 @@ public:
     ioctree_.setBucketSize(cfg.ioctree.bucket_size);
     ioctree_.setDownsample(cfg.ioctree.downsample);
     ioctree_.setMinExtent(cfg.ioctree.min_extent);
-  };
+
+    // Set callbacks and publishers
+    rclcpp::SubscriptionOptions lidar_opt, imu_opt;
+    lidar_opt.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    imu_opt.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+
+    lidar_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+                    cfg.topics.input.lidar, 
+                    1, 
+                    std::bind(&Manager::lidar_callback, this, std::placeholders::_1), 
+                    lidar_opt);
+
+    imu_sub_   = this->create_subscription<sensor_msgs::msg::Imu>(
+                    cfg.topics.input.imu, 
+                    1000, 
+                    std::bind(&Manager::imu_callback, this, std::placeholders::_1), 
+                    imu_opt);
+
+    pub_state       = this->create_publisher<nav_msgs::msg::Odometry>(cfg.topics.output.state, 10);
+    pub_frame       = this->create_publisher<sensor_msgs::msg::PointCloud2>(cfg.topics.output.frame, 10);
+
+    pub_raw         = this->create_publisher<sensor_msgs::msg::PointCloud2>("debug/raw", 10);
+    pub_deskewed    = this->create_publisher<sensor_msgs::msg::PointCloud2>("debug/deskewed", 10);
+    pub_downsampled = this->create_publisher<sensor_msgs::msg::PointCloud2>("debug/downsampled", 10);
+    pub_to_match    = this->create_publisher<sensor_msgs::msg::PointCloud2>("debug/to_match", 10);
+
+
+    auto param_names = this->list_parameters({}, 100).names;
+    auto params = this->get_parameters(param_names);
+    for (size_t i = 0; i < param_names.size(); i++) {
+        RCLCPP_INFO(this->get_logger(), "Parameter: %s = %s",
+                    param_names[i].c_str(),
+                    params[i].value_to_string().c_str());
+    }
+  }
   
-  ~Manager() = default;
 
-
-  void imu_callback(const sensor_msgs::Imu::ConstPtr& msg) {
+  void imu_callback(const sensor_msgs::msg::Imu::ConstSharedPtr& msg) {
 
     Config& cfg = Config::getInstance();
 
@@ -122,22 +169,22 @@ public:
 
       cv_prop_stamp_.notify_one();
 
-      pub_state.publish(toROS(state_));
+      pub_state->publish(toROS(state_));
     }
 
   }
 
 
-  void lidar_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
+  void lidar_callback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg) {
 PROFC_NODE("LiDAR Callback")
 
     Config& cfg = Config::getInstance();
 
-    PointCloudT::Ptr raw(boost::make_shared<PointCloudT>());
+    PointCloudT::Ptr raw(new PointCloudT);
     fromROS(*msg, *raw);
 
     if (raw->points.empty()) {
-      ROS_ERROR("[LIMONCELLO] Raw PointCloud is empty!");
+      RCLCPP_ERROR(get_logger(), "[LIMONCELLO] Raw PointCloud is empty!");
       return;
     }
 
@@ -145,13 +192,14 @@ PROFC_NODE("LiDAR Callback")
       return;
 
     if (state_buffer_.empty()) {
-      ROS_ERROR("[LIMONCELLO] No IMUs received");
+      RCLCPP_ERROR(get_logger(), "[LIMONCELLO] No IMUs received");
       return;
     }
 
     PointTime point_time = point_time_func();
-    double sweep_time = msg->header.stamp.toSec() + cfg.sensors.TAI_offset;
-    
+    double sweep_time = rclcpp::Time(msg->header.stamp).seconds() 
+                        + cfg.sensors.TAI_offset;
+
     double offset = 0.0;
     if (cfg.sensors.time_offset) { // automatic sync (not precise!)
       offset = state_.stamp - point_time(raw->points.back(), sweep_time) - 1.e-4; 
@@ -184,7 +232,7 @@ PROFC_NODE("LiDAR Callback")
 
     if (start_stamp < interpolated.front().stamp or interpolated.size() == 0) {
       // every points needs to have a state associated not in the past
-      ROS_WARN("Not enough interpolated states for deskewing pointcloud \n");
+      RCLCPP_WARN(get_logger(), "Not enough interpolated states for deskewing pointcloud \n");
       return;
     }
 
@@ -195,7 +243,7 @@ PROFC_NODE("LiDAR Callback")
     PointCloudT::Ptr processed = process(downsampled);
 
     if (processed->points.empty()) {
-      ROS_ERROR("[LIMONCELLO] Processed & downsampled cloud is empty!");
+      RCLCPP_ERROR(get_logger(), "[LIMONCELLO] Processed & downsampled cloud is empty!");
       return;
     }
 
@@ -204,23 +252,43 @@ PROFC_NODE("LiDAR Callback")
 
   mtx_state_.unlock();
 
-    PointCloudT::Ptr global(boost::make_shared<PointCloudT>());
-    pcl::transformPointCloud(*deskewed, *global, T);
-    pcl::transformPointCloud(*processed, *processed, T);
+    PointCloudT::Ptr global(new PointCloudT);
+
+    for (const auto& p : deskewed->points) {
+      auto pt = T*p.getVector3fMap();
+      PointT pp = p;
+      pp.x = pt.x(); 
+      pp.y = pt.y(); 
+      pp.z = pt.z(); 
+      global->points.push_back(pp);
+    }
+    // pcl::transformPointCloud(*deskewed, *global, T); ORIGINAL
+
+PointCloudT::Ptr new_processed(new PointCloudT);
+
+    for (const auto& p : processed->points) {
+      auto pt = T*p.getVector3fMap();
+      PointT pp = p;
+      pp.x = pt.x(); 
+      pp.y = pt.y(); 
+      pp.z = pt.z(); 
+      new_processed->points.push_back(pp);
+    }
+    // pcl::transformPointCloud(*processed, *processed, T); ORIGINAL
 
     // Publish
-    pub_state.publish(toROS(state_));
-    pub_frame.publish(toROS(global));
+    pub_state->publish(toROS(state_));
+    pub_frame->publish(toROS(global));
 
     if (cfg.debug) {
-      pub_raw.publish(toROS(raw));
-      pub_deskewed.publish(toROS(deskewed));
-      pub_downsampled.publish(toROS(downsampled));
-      pub_to_match.publish(toROS(processed));
+      pub_raw->publish(toROS(raw));
+      pub_deskewed->publish(toROS(deskewed));
+      pub_downsampled->publish(toROS(downsampled));
+      pub_to_match->publish(toROS(processed));
     }
 
     // Update map
-    ioctree_.update(processed->points);
+    ioctree_.update(new_processed->points);
 
     if (cfg.verbose)
       PROFC_PRINT()
@@ -232,45 +300,16 @@ int main(int argc, char** argv) {
 
   pcl::console::setVerbosityLevel(pcl::console::L_ALWAYS);
   
-  ros::init(argc, argv, "limoncello");
-  ros::NodeHandle nh("~");
-  
+  rclcpp::init(argc, argv);
 
-  // Setup config parameters.
-  Config& cfg = Config::getInstance();
-  fill_config(cfg, nh); 
+  rclcpp::Node::SharedPtr manager = std::make_shared<Manager>();
 
-  // Initialize manager (reads from config)
-  Manager manager = Manager();
+  rclcpp::executors::MultiThreadedExecutor executor; // by default using all available cores
+  executor.add_node(manager);
+  executor.spin();
 
-  // Publishers
-  pub_state = nh.advertise<nav_msgs::Odometry>(cfg.topics.output.state, 10);
-  pub_frame = nh.advertise<sensor_msgs::PointCloud2>(cfg.topics.output.frame, 10);
+  rclcpp::shutdown();
 
-  // Debug only
-  pub_raw         = nh.advertise<sensor_msgs::PointCloud2>("debug/raw",         10);
-  pub_deskewed    = nh.advertise<sensor_msgs::PointCloud2>("debug/deskewed",    10);
-  pub_downsampled = nh.advertise<sensor_msgs::PointCloud2>("debug/downsampled", 10);
-  pub_to_match    = nh.advertise<sensor_msgs::PointCloud2>("debug/to_match",    10);
-
-
-  // Subscribers
-  ros::Subscriber lidar_sub = nh.subscribe(cfg.topics.input.lidar,
-                                           1,
-                                           &Manager::lidar_callback,
-                                           &manager,
-                                           ros::TransportHints().tcpNoDelay());
-
-  ros::Subscriber imu_sub = nh.subscribe(cfg.topics.input.imu,
-                                         1000,
-                                         &Manager::imu_callback,
-                                         &manager,
-                                         ros::TransportHints().tcpNoDelay());
-
-  ros::AsyncSpinner spinner(0);
-  spinner.start();
-  
-  ros::waitForShutdown();
 
   return 0;
 }

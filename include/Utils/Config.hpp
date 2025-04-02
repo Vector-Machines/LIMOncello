@@ -1,7 +1,5 @@
 #pragma once
 
-#include <ros/ros.h>
-
 #include <cmath>
 #include <string>
 #include <vector>
@@ -58,16 +56,6 @@ struct Config {
   		Eigen::Affine3d imu2baselink_T;
   		Eigen::Affine3d lidar2baselink_T;
   		float gravity;
-
-      struct {
-        double roll, pitch, yaw;
-        Eigen::Vector3d t;
-      } lidar2baselink;
-
-      struct {
-        double roll, pitch, yaw;
-        Eigen::Vector3d t;
-      } imu2baselink;
 
   	} extrinsics;
 

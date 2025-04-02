@@ -5,16 +5,15 @@
 
 #include <Eigen/Dense>
 
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 
 #include <tf2/convert.h>
-#include <tf2_eigen/tf2_eigen.h>
-#include <tf2_ros/transform_broadcaster.h>
+#include <tf2_eigen/tf2_eigen.hpp>
 
-#include <sensor_msgs/Imu.h>
-#include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/msg/imu.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 
-#include <nav_msgs/Odometry.h>
+#include <nav_msgs/msg/odometry.hpp>
 
 #include "Core/Imu.hpp"
 #include "Core/State.hpp"
@@ -22,9 +21,9 @@
 #include "Utils/Config.hpp"
 
 
-Imu fromROS(const sensor_msgs::Imu::ConstPtr& in) {
+Imu fromROS(const sensor_msgs::msg::Imu::ConstSharedPtr& in) {
   Imu out;
-  out.stamp = in->header.stamp.toSec();
+  out.stamp = rclcpp::Time(in->header.stamp).seconds();
 
   out.ang_vel(0) = in->angular_velocity.x;
   out.ang_vel(1) = in->angular_velocity.y;
@@ -39,7 +38,7 @@ Imu fromROS(const sensor_msgs::Imu::ConstPtr& in) {
   return out;
 }
 
-void fromROS(const sensor_msgs::PointCloud2& msg, PointCloudT& raw) {
+void fromROS(const sensor_msgs::msg::PointCloud2& msg, PointCloudT& raw) {
 
 PROFC_NODE("PointCloud2 to pcl")
 
@@ -62,21 +61,21 @@ PROFC_NODE("PointCloud2 to pcl")
     std::iter_swap(minmax.second, raw.points.end() - 1);
 }
 
-sensor_msgs::PointCloud2 toROS(const PointCloudT::Ptr& cloud) {
+sensor_msgs::msg::PointCloud2 toROS(const PointCloudT::Ptr& cloud) {
   
-  sensor_msgs::PointCloud2 out;
+  sensor_msgs::msg::PointCloud2 out;
   pcl::toROSMsg(*cloud, out);
-  out.header.stamp = ros::Time::now();
+  out.header.stamp = rclcpp::Clock(RCL_ROS_TIME).now();
   out.header.frame_id = Config::getInstance().topics.frame_id;
 
   return out;
 }
 
-nav_msgs::Odometry toROS(State& state) {
+nav_msgs::msg::Odometry toROS(State& state) {
 
   Config& cfg = Config::getInstance();
 
-  nav_msgs::Odometry out;
+  nav_msgs::msg::Odometry out;
 
   // Pose/Attitude
   out.pose.pose.position    = tf2::toMsg(state.p());
@@ -92,126 +91,147 @@ nav_msgs::Odometry toROS(State& state) {
   out.twist.twist.angular.z = state.w(2) - state.b_w()(2);
 
   out.header.frame_id = Config::getInstance().topics.frame_id;
-  out.header.stamp = ros::Time::now();
+  out.header.stamp = rclcpp::Clock(RCL_ROS_TIME).now();
 
   return out;
 }
 
 
-// Function to fill configuration using ROS NodeHandle
-void fill_config(Config& cfg, ros::NodeHandle& nh) {
+void fill_config(Config& cfg, rclcpp::Node* n) {
 
-  nh.getParam("verbose", cfg.verbose);
-  nh.getParam("debug",   cfg.debug);
+  n->get_parameter("verbose", cfg.verbose);
+  n->get_parameter("debug",   cfg.debug);
 
   // TOPICS
-  nh.getParam("topics/input/lidar",  cfg.topics.input.lidar);
-  nh.getParam("topics/input/imu",    cfg.topics.input.imu);
-  nh.getParam("topics/output/state", cfg.topics.output.state);
-  nh.getParam("topics/output/frame", cfg.topics.output.frame);
-  nh.getParam("topics/frame_id",     cfg.topics.frame_id);
-
+  n->get_parameter("topics.input.lidar",  cfg.topics.input.lidar);
+  n->get_parameter("topics.input.imu",    cfg.topics.input.imu);
+  n->get_parameter("topics.output.state", cfg.topics.output.state);
+  n->get_parameter("topics.output.frame", cfg.topics.output.frame);
+  n->get_parameter("topics.frame_id",     cfg.topics.frame_id);
 
   // SENSORS
-  nh.getParam("sensors/lidar/type",          cfg.sensors.lidar.type);
-  nh.getParam("sensors/lidar/end_of_sweep",  cfg.sensors.lidar.end_of_sweep);
-  nh.getParam("sensors/imu/hz",              cfg.sensors.imu.hz);
-
-  nh.getParam("sensors/calibration/gravity_align", cfg.sensors.calibration.gravity_align);
-  nh.getParam("sensors/calibration/accel",         cfg.sensors.calibration.accel);
-  nh.getParam("sensors/calibration/gyro",          cfg.sensors.calibration.gyro);
-  nh.getParam("sensors/calibration/time",          cfg.sensors.calibration.time);
-
-  nh.getParam("sensors/time_offset", cfg.sensors.time_offset);
-  nh.getParam("sensors/TAI_offset",  cfg.sensors.TAI_offset);
+  n->get_parameter("sensors.lidar.type",         cfg.sensors.lidar.type);
+  n->get_parameter("sensors.lidar.end_of_sweep", cfg.sensors.lidar.end_of_sweep);
+  n->get_parameter("sensors.imu.hz",             cfg.sensors.imu.hz);
 
 
-  std::vector<double> tmp;
-  nh.getParam("sensors/extrinsics/imu2baselink/t", tmp);
+  n->get_parameter("sensors.calibration.gravity_align", cfg.sensors.calibration.gravity_align);
+  n->get_parameter("sensors.calibration.accel",         cfg.sensors.calibration.accel);
+  n->get_parameter("sensors.calibration.gyro",          cfg.sensors.calibration.gyro);
+  n->get_parameter("sensors.calibration.time",          cfg.sensors.calibration.time);
 
-  cfg.sensors.extrinsics.imu2baselink_T.setIdentity();
-  cfg.sensors.extrinsics.imu2baselink_T.translate(Eigen::Vector3d(tmp[0], tmp[1], tmp[2]));
-  cfg.sensors.extrinsics.imu2baselink.t = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);
+  n->get_parameter("sensors.time_offset", cfg.sensors.time_offset);
+  n->get_parameter("sensors.TAI_offset",  cfg.sensors.TAI_offset);
 
-  nh.getParam("sensors/extrinsics/imu2baselink/R", tmp);
-  Eigen::Matrix3d R_imu = (
-      Eigen::AngleAxisd(tmp[0] * M_PI/180., Eigen::Vector3d::UnitX()) *
-      Eigen::AngleAxisd(tmp[1] * M_PI/180., Eigen::Vector3d::UnitY()) *
-      Eigen::AngleAxisd(tmp[2] * M_PI/180., Eigen::Vector3d::UnitZ())
+
+  // SENSORS - EXTRINSICS (imu2baselink)
+  {
+    std::vector<double> tmp;
+    n->get_parameter("sensors.extrinsics.imu2baselink.t", tmp);
+    cfg.sensors.extrinsics.imu2baselink_T.setIdentity();
+    cfg.sensors.extrinsics.imu2baselink_T.translate(Eigen::Vector3d(tmp[0], tmp[1], tmp[2]));
+  }
+
+
+  {
+    std::vector<double> tmp;
+    n->get_parameter("sensors.extrinsics.imu2baselink.R", tmp);
+
+    Eigen::Matrix3d R_imu = (
+      Eigen::AngleAxisd(tmp[0] * M_PI / 180.0, Eigen::Vector3d::UnitX()) *
+      Eigen::AngleAxisd(tmp[1] * M_PI / 180.0, Eigen::Vector3d::UnitY()) *
+      Eigen::AngleAxisd(tmp[2] * M_PI / 180.0, Eigen::Vector3d::UnitZ())
     ).toRotationMatrix();
 
-  cfg.sensors.extrinsics.imu2baselink_T.rotate(R_imu);
-  cfg.sensors.extrinsics.imu2baselink.roll  = tmp[0] * M_PI/180.;
-  cfg.sensors.extrinsics.imu2baselink.pitch = tmp[1] * M_PI/180.;
-  cfg.sensors.extrinsics.imu2baselink.yaw   = tmp[2] * M_PI/180.;
+    cfg.sensors.extrinsics.imu2baselink_T.rotate(R_imu);
+  }
 
-  nh.getParam("sensors/extrinsics/lidar2baselink/t", tmp);
 
-  cfg.sensors.extrinsics.lidar2baselink_T.setIdentity();
-  cfg.sensors.extrinsics.lidar2baselink_T.translate(Eigen::Vector3d(tmp[0], tmp[1], tmp[2]));
-  cfg.sensors.extrinsics.lidar2baselink.t = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);
+  // SENSORS - EXTRINSICS (lidar2baselink)
+  {
+    std::vector<double> tmp;
+    n->get_parameter("sensors.extrinsics.lidar2baselink.t", tmp);
+    cfg.sensors.extrinsics.lidar2baselink_T.setIdentity();
+    cfg.sensors.extrinsics.lidar2baselink_T.translate(Eigen::Vector3d(tmp[0], tmp[1], tmp[2]));
+  }
 
-  nh.getParam("sensors/extrinsics/lidar2baselink/R", tmp);
-  Eigen::Matrix3d R_lidar = (
-      Eigen::AngleAxisd(tmp[0] * M_PI/180., Eigen::Vector3d::UnitX()) *
-      Eigen::AngleAxisd(tmp[1] * M_PI/180., Eigen::Vector3d::UnitY()) *
-      Eigen::AngleAxisd(tmp[2] * M_PI/180., Eigen::Vector3d::UnitZ())
+
+  {
+    std::vector<double> tmp;
+    n->get_parameter("sensors.extrinsics.lidar2baselink.R", tmp);
+    Eigen::Matrix3d R_lidar = (
+      Eigen::AngleAxisd(tmp[0] * M_PI / 180.0, Eigen::Vector3d::UnitX()) *
+      Eigen::AngleAxisd(tmp[1] * M_PI / 180.0, Eigen::Vector3d::UnitY()) *
+      Eigen::AngleAxisd(tmp[2] * M_PI / 180.0, Eigen::Vector3d::UnitZ())
     ).toRotationMatrix();
 
-  cfg.sensors.extrinsics.lidar2baselink_T.rotate(R_lidar);
-  cfg.sensors.extrinsics.lidar2baselink.roll  = tmp[0] * M_PI/180.;
-  cfg.sensors.extrinsics.lidar2baselink.pitch = tmp[1] * M_PI/180.;
-  cfg.sensors.extrinsics.lidar2baselink.yaw   = tmp[2] * M_PI/180.;
+    cfg.sensors.extrinsics.lidar2baselink_T.rotate(R_lidar);
+  }
 
-  nh.getParam("sensors/extrinsics/gravity", cfg.sensors.extrinsics.gravity);
+  n->get_parameter("sensors.extrinsics.gravity", cfg.sensors.extrinsics.gravity);
 
-  nh.getParam("sensors/intrinsics/accel_bias", tmp);
-  cfg.sensors.intrinsics.accel_bias = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);
+  // SENSORS - INTRINSICS
+  {
+    std::vector<double> tmp;
+    n->get_parameter("sensors.intrinsics.accel_bias", tmp);
+    cfg.sensors.intrinsics.accel_bias = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);
+  }
 
-  nh.getParam("sensors/intrinsics/gyro_bias", tmp);
-  cfg.sensors.intrinsics.gyro_bias = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);
 
-  nh.getParam("sensors/intrinsics/sm", tmp);
-  cfg.sensors.intrinsics.sm << tmp[0], tmp[1], tmp[2],
-                               tmp[3], tmp[4], tmp[5],
-                               tmp[6], tmp[7], tmp[8];
+  {
+    std::vector<double> tmp;
+    n->get_parameter("sensors.intrinsics.gyro_bias", tmp);
+    cfg.sensors.intrinsics.gyro_bias = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);
+  }
+
+
+  {
+    std::vector<double> tmp;
+    n->get_parameter("sensors.intrinsics.sm", tmp);
+    cfg.sensors.intrinsics.sm << tmp[0], tmp[1], tmp[2],
+                                 tmp[3], tmp[4], tmp[5],
+                                 tmp[6], tmp[7], tmp[8];
+  }
 
 
   // FILTERS
-  nh.getParam("filters/voxel_grid/leaf_size", tmp);
-  cfg.filters.voxel_grid.leaf_size = Eigen::Vector4d(tmp[0], tmp[1], tmp[2], 1.);
+  {
+    std::vector<double> tmp;
+    n->get_parameter("filters.voxel_grid.leaf_size", tmp);
+    cfg.filters.voxel_grid.leaf_size = Eigen::Vector4d(tmp[0], tmp[1], tmp[2], 1.);
+  }
 
-  nh.getParam("filters/min_distance/active", cfg.filters.min_distance.active);
-  nh.getParam("filters/min_distance/value",  cfg.filters.min_distance.value);
 
-  nh.getParam("filters/fov/active", cfg.filters.fov.active);
-  nh.getParam("filters/fov/value",  cfg.filters.fov.value);
-  cfg.filters.fov.value *= M_PI/360.;
+  n->get_parameter("filters.min_distance.active", cfg.filters.min_distance.active);
+  n->get_parameter("filters.min_distance.value",  cfg.filters.min_distance.value);
 
-  nh.getParam("filters/rate_sampling/active", cfg.filters.rate_sampling.active);
-  nh.getParam("filters/rate_sampling/value",  cfg.filters.rate_sampling.value);
+  n->get_parameter("filters.fov.active", cfg.filters.fov.active);
+  n->get_parameter("filters.fov.value",  cfg.filters.fov.value);
+  cfg.filters.fov.value *= M_PI / 360.0;
 
+  n->get_parameter("filters.rate_sampling.active", cfg.filters.rate_sampling.active);
+  n->get_parameter("filters.rate_sampling.value",  cfg.filters.rate_sampling.value);
 
   // IKFoM
-  nh.getParam("IKFoM/query_iters",         cfg.ikfom.query_iters);
-  nh.getParam("IKFoM/max_iters",           cfg.ikfom.max_iters);
-  nh.getParam("IKFoM/tolerance",           cfg.ikfom.tolerance);
-  nh.getParam("IKFoM/estimate_extrinsics", cfg.ikfom.estimate_extrinsics);
-  nh.getParam("IKFoM/lidar_noise",         cfg.ikfom.lidar_noise);
+  n->get_parameter("IKFoM.query_iters",         cfg.ikfom.query_iters);
+  n->get_parameter("IKFoM.max_iters",           cfg.ikfom.max_iters);
+  n->get_parameter("IKFoM.tolerance",           cfg.ikfom.tolerance);
+  n->get_parameter("IKFoM.estimate_extrinsics", cfg.ikfom.estimate_extrinsics);
+  n->get_parameter("IKFoM.lidar_noise",         cfg.ikfom.lidar_noise);
 
-  
-  nh.getParam("IKFoM/covariance/gyro",       cfg.ikfom.covariance.gyro);
-  nh.getParam("IKFoM/covariance/accel",      cfg.ikfom.covariance.accel);
-  nh.getParam("IKFoM/covariance/bias_gyro",  cfg.ikfom.covariance.bias_gyro);
-  nh.getParam("IKFoM/covariance/bias_accel", cfg.ikfom.covariance.bias_accel);
+  n->get_parameter("IKFoM.covariance.gyro",       cfg.ikfom.covariance.gyro);
+  n->get_parameter("IKFoM.covariance.accel",      cfg.ikfom.covariance.accel);
+  n->get_parameter("IKFoM.covariance.bias_gyro",  cfg.ikfom.covariance.bias_gyro);
+  n->get_parameter("IKFoM.covariance.bias_accel", cfg.ikfom.covariance.bias_accel);
 
-  nh.getParam("IKFoM/plane/points",          cfg.ikfom.plane.points);
-  nh.getParam("IKFoM/plane/max_sqrt_dist",   cfg.ikfom.plane.max_sqrt_dist);
-  nh.getParam("IKFoM/plane/plane_threshold", cfg.ikfom.plane.plane_threshold);
-
+  n->get_parameter("IKFoM.plane.points",          cfg.ikfom.plane.points);
+  n->get_parameter("IKFoM.plane.max_sqrt_dist",   cfg.ikfom.plane.max_sqrt_dist);
+  n->get_parameter("IKFoM.plane.plane_threshold", cfg.ikfom.plane.plane_threshold);
 
   // iOctree
-  nh.getParam("iOctree/min_extent",  cfg.ioctree.min_extent);
-  nh.getParam("iOctree/bucket_size", cfg.ioctree.bucket_size);
-  nh.getParam("iOctree/downsample",  cfg.ioctree.downsample);
+  n->get_parameter("iOctree.min_extent", cfg.ioctree.min_extent);
+  n->get_parameter("iOctree.bucket_size", cfg.ioctree.bucket_size);
+  n->get_parameter("iOctree.downsample",  cfg.ioctree.downsample);
 }
+
+
