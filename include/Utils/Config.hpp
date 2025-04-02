@@ -1,7 +1,5 @@
 #pragma once
 
-#include <ros/ros.h>
-
 #include <cmath>
 #include <string>
 #include <vector>
