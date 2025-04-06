@@ -46,7 +46,6 @@ struct Config {
   	} imu;
 
   	struct {
-  		bool gravity_align;
   		bool accel;
   		bool gyro;
   		float time;

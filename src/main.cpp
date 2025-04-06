@@ -53,8 +53,7 @@ public:
 
     Config& cfg = Config::getInstance();
 
-    imu_calibrated_ = not (cfg.sensors.calibration.gravity_align 
-                           or cfg.sensors.calibration.accel
+    imu_calibrated_ = not (cfg.sensors.calibration.accel
                            or cfg.sensors.calibration.gyro); 
 
     ioctree_.setBucketSize(cfg.ioctree.bucket_size);
@@ -98,15 +97,6 @@ public:
       } else {
         gyro_avg /= N;
         accel_avg /= N;
-
-        if (cfg.sensors.calibration.gravity_align) {
-          grav_vec = accel_avg.normalized() * abs(cfg.sensors.extrinsics.gravity);
-          Eigen::Quaterniond q = Eigen::Quaterniond::FromTwoVectors(
-                                  grav_vec, 
-                                  Eigen::Vector3d(0., 0., cfg.sensors.extrinsics.gravity));
-          state_.quat(q);
-          state_.g(-grav_vec);
-        }
         
         if (cfg.sensors.calibration.gyro)
           state_.b_w(gyro_avg);

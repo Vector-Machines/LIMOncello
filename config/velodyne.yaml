@@ -24,7 +24,6 @@ sensors:
     hz: 400
 
   calibration:  # automatic IMU calibration (if all set to false, no calibration will be done)
-    gravity_align: true     # estimate gravity vector
     accel: true             # estimate lin. accel. bias
     gyro: true              # estimate ang. vel. bias
     time: 1.5               # time to estimate (during this time, the 

@@ -114,14 +114,13 @@ void fill_config(Config& cfg, ros::NodeHandle& nh) {
 
 
   // SENSORS
-  nh.getParam("sensors/lidar/type",          cfg.sensors.lidar.type);
-  nh.getParam("sensors/lidar/end_of_sweep",  cfg.sensors.lidar.end_of_sweep);
-  nh.getParam("sensors/imu/hz",              cfg.sensors.imu.hz);
+  nh.getParam("sensors/lidar/type",         cfg.sensors.lidar.type);
+  nh.getParam("sensors/lidar/end_of_sweep", cfg.sensors.lidar.end_of_sweep);
+  nh.getParam("sensors/imu/hz",             cfg.sensors.imu.hz);
 
-  nh.getParam("sensors/calibration/gravity_align", cfg.sensors.calibration.gravity_align);
-  nh.getParam("sensors/calibration/accel",         cfg.sensors.calibration.accel);
-  nh.getParam("sensors/calibration/gyro",          cfg.sensors.calibration.gyro);
-  nh.getParam("sensors/calibration/time",          cfg.sensors.calibration.time);
+  nh.getParam("sensors/calibration/accel", cfg.sensors.calibration.accel);
+  nh.getParam("sensors/calibration/gyro",  cfg.sensors.calibration.gyro);
+  nh.getParam("sensors/calibration/time",  cfg.sensors.calibration.time);
 
   nh.getParam("sensors/time_offset", cfg.sensors.time_offset);
   nh.getParam("sensors/TAI_offset",  cfg.sensors.TAI_offset);

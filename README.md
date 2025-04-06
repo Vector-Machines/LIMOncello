@@ -1,2 +1,7 @@
 # LIMOncello
-LiDAR Inertial Odometry SLAM. Work in progress, see [Issue #2](https://github.com/CPerezRuiz335/LIMOncello/issues/2).
+
+See [Issue #2](https://github.com/CPerezRuiz335/LIMOncello/issues/2).
+
+LIMOncello is 90% complete. It needs to be properly ported to ROS2 and 
+requires an improved README, but it will not undergo major changes in 
+the near future.
