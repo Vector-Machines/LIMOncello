@@ -1,11 +1,8 @@
-# CAT15 config
-
 topics:
   input:
     lidar: /os1_cloud_node/points
     imu:   /os1_cloud_node/imu
-    stop_ioctree_udate: /stop
-    # imu: /EL/Sensors/vectornav/IMU
+    stop_ioctree_udate: /AS/P/pathlimits/closed
   output:
     state: state  
     frame: full_pcl
@@ -25,6 +22,7 @@ sensors:
     hz: 125
 
   calibration:  # automatic IMU calibration (if all set to false, no calibration will be done)
+    gravity: true           # estimate gravity vector
     accel: true             # estimate lin. accel. bias
     gyro: true              # estimate ang. vel. bias
     time: 3.                # time to estimate (during this time, the 
@@ -69,7 +67,6 @@ sensors:
   
 filters:
   voxel_grid:
-    active: true
     leaf_size: [ .5, .5, .5 ]
 
   min_distance: # sphere crop

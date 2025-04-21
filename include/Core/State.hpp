@@ -231,7 +231,7 @@ PROFC_NODE("update")
           Eigen::Matrix<double, 3, DoFObs> J_s; // Jacobian of state (pos., vel., rot., t)
           Eigen::Vector3d g = s.X.element<0>().act(s.I2L_affine3d() * m.p, J_s);
 
-          H.block<1, DoFObs>(i, 0) << m.n.head(3).transpose() * J_s;;
+          H.block<1, DoFObs>(i, 0) << m.n.head(3).transpose() * J_s;
           z(i) = -Match::dist2plane(m.n, g);
         }
       ); // end for_each
@@ -307,8 +307,10 @@ PROFC_NODE("update")
   }
 
 // Setters
-  void b_w(const Eigen::Vector3d& in)    { X.element<1>() = manif::R3d(in);                  }
-  void b_a(const Eigen::Vector3d& in)    { X.element<2>() = manif::R3d(in);                  }
+  void b_w(const Eigen::Vector3d& in) { X.element<1>() = manif::R3d(in); }
+  void b_a(const Eigen::Vector3d& in) { X.element<2>() = manif::R3d(in); }
+  void g(const Eigen::Vector3d& in)   { X.element<3>() = manif::R3d(in); }
+
 };
 
 typedef boost::circular_buffer<State> States;

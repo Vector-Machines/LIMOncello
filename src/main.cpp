@@ -53,7 +53,8 @@ public:
 
     Config& cfg = Config::getInstance();
 
-    imu_calibrated_ = not (cfg.sensors.calibration.accel
+    imu_calibrated_ = not (cfg.sensors.calibration.gravity
+                           or cfg.sensors.calibration.accel
                            or cfg.sensors.calibration.gyro); 
 
     ioctree_.setBucketSize(cfg.ioctree.bucket_size);
@@ -97,6 +98,11 @@ public:
       } else {
         gyro_avg /= N;
         accel_avg /= N;
+
+        if (cfg.sensors.calibration.gravity) {
+          grav_vec = accel_avg.normalized() * abs(cfg.sensors.extrinsics.gravity);
+          state_.g(-grav_vec);
+        }
         
         if (cfg.sensors.calibration.gyro)
           state_.b_w(gyro_avg);
