@@ -27,7 +27,7 @@ limoncello:
         hz: 200     # Mid-360 IMU frequency is 200Hz
 
       calibration:  # automatic IMU calibration
-        gravity_align: true     # estimate gravity vector
+        gravity: true     # estimate gravity vector
         accel: true             # estimate lin. accel. bias
         gyro: true              # estimate ang. vel. bias
         time: 5.0               # calibration time (robot must be stationary)
@@ -59,7 +59,7 @@ limoncello:
 
       min_distance:                       # sphere crop
         active: true
-        value: 1.0                        # [m] Using Fast-LIMO value
+        value: 1.6                        # [m] Using Fast-LIMO value
 
       fov:                                # crop field of view
         active: false
@@ -87,6 +87,6 @@ limoncello:
         plane_threshold: 0.05            # [m] Using your Fast-LIMO PLANES_THRESHOLD
         
     iOctree:
-      min_extent: 0.2                    # Minimum cell size, similar to Fast-LIMO voxel
+      min_extent: 0.1                    # Minimum cell size, similar to Fast-LIMO voxel
       bucket_size: 5                     # Maximum points per octree leaf
       downsample: true                   # Downsample when inserting into the octree
