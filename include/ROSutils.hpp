@@ -115,7 +115,7 @@ void fill_config(Config& cfg, rclcpp::Node* n) {
   n->get_parameter("sensors.imu.hz",             cfg.sensors.imu.hz);
 
 
-  n->get_parameter("sensors.calibration.gravity_align", cfg.sensors.calibration.gravity_align);
+  n->get_parameter("sensors.calibration.gravity", cfg.sensors.calibration.gravity);
   n->get_parameter("sensors.calibration.accel",         cfg.sensors.calibration.accel);
   n->get_parameter("sensors.calibration.gyro",          cfg.sensors.calibration.gyro);
   n->get_parameter("sensors.calibration.time",          cfg.sensors.calibration.time);
@@ -216,7 +216,6 @@ void fill_config(Config& cfg, rclcpp::Node* n) {
   n->get_parameter("IKFoM.query_iters",         cfg.ikfom.query_iters);
   n->get_parameter("IKFoM.max_iters",           cfg.ikfom.max_iters);
   n->get_parameter("IKFoM.tolerance",           cfg.ikfom.tolerance);
-  n->get_parameter("IKFoM.estimate_extrinsics", cfg.ikfom.estimate_extrinsics);
   n->get_parameter("IKFoM.lidar_noise",         cfg.ikfom.lidar_noise);
 
   n->get_parameter("IKFoM.covariance.gyro",       cfg.ikfom.covariance.gyro);

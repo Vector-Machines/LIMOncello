@@ -89,7 +89,6 @@ limoncello:
       query_iters: 3 # number of iterations doing KNN from max iterations 
       max_iters: 3  # max num of iterations of the IESEKF
       tolerance: 0.0001                      
-      estimate_extrinsics: false
       lidar_noise: 0.001
 
       covariance:

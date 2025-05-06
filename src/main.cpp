@@ -156,8 +156,9 @@ public:
     } else {
       double dt = imu.stamp - prev_imu_.stamp;
 
-      if (dt < 0)
-        ROS_ERROR("IMU timestamps not correct");
+      if (dt < 0) {
+        RCLCPP_ERROR(get_logger(), "IMU timestamps not correct");
+      }
 
       dt = (dt < 0 or dt >= imu.stamp) ? 1./cfg.sensors.imu.hz : dt;
 
