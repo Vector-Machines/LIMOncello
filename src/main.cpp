@@ -9,6 +9,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <nav_msgs/msg/odometry.hpp>
+#include <std_msgs/msg/bool.hpp>
 
 #include "Core/Octree.hpp"
 #include "Core/State.hpp"
@@ -37,12 +38,6 @@ class Manager : public rclcpp::Node {
   charlie::Octree ioctree_;
   bool stop_ioctree_update_;
 
-  ros::Publisher pub_state_, 
-                 pub_frame_, 
-                 pub_raw_, 
-                 pub_deskewed_, 
-                 pub_downsampled_, 
-                 pub_to_match_;
 
   // ROS
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr lidar_sub_;
@@ -58,7 +53,7 @@ class Manager : public rclcpp::Node {
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_downsampled;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_to_match;
 
-  
+
 public:
   Manager() : Node("limoncello", 
                    rclcpp::NodeOptions()
@@ -302,10 +297,10 @@ PointCloudT::Ptr new_processed(new PointCloudT);
   }
 
 
-  void stop_update_callback(const std_msgs::Bool::ConstPtr& msg) {
+  void stop_update_callback(const std_msgs::msg::Bool::ConstSharedPtr msg) {
     if (not stop_ioctree_update_ and msg->data) {
       stop_ioctree_update_ = msg->data;
-      ROS_INFO("Stopping ioctree updates from now onwards");
+      RCLCPP_INFO(this->get_logger(), "Stopping ioctree updates from now onwards");
     }
   }
 
