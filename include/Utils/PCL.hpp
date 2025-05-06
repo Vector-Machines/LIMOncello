@@ -63,7 +63,7 @@ PointTime point_time_func() {
     return [] (const PointT& p, const double& sweep_time) { return p.timestamp; };
 
   } else if (cfg.sensors.lidar.type == 3) { // LIVOX
-    return [] (const PointT& p, const double& sweep_time) { return p.timestamp * 1e-9f; };
+    return [] (const PointT& p, const double& sweep_time) { return sweep_time + p.timestamp * 1e-9f; };
 
   } else {
     std::cout << "-------------------------------------------\n";
