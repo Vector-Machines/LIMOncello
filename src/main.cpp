@@ -11,6 +11,9 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <std_msgs/msg/bool.hpp>
 
+#include <tf2_ros/transform_broadcaster.h>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+
 #include "Core/Octree.hpp"
 #include "Core/State.hpp"
 #include "Core/Cloud.hpp"
@@ -47,6 +50,9 @@ class Manager : public rclcpp::Node {
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_state;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_frame;
 
+  // TF Broadcaster
+  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+
   // Debug
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_raw;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_deskewed;
@@ -61,7 +67,8 @@ public:
                       .automatically_declare_parameters_from_overrides(true)),
               first_imu_stamp_(-1.0), 
               state_buffer_(1000), 
-              ioctree_() {
+              ioctree_(),
+              stop_ioctree_update_(false) {
 
     Config& cfg = Config::getInstance();
     fill_config(cfg, this);
@@ -75,9 +82,10 @@ public:
     ioctree_.setMinExtent(cfg.ioctree.min_extent);
 
     // Set callbacks and publishers
-    rclcpp::SubscriptionOptions lidar_opt, imu_opt;
+    rclcpp::SubscriptionOptions lidar_opt, imu_opt, stop_opt;
     lidar_opt.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     imu_opt.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    stop_opt.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
     lidar_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
                     cfg.topics.input.lidar, 
@@ -91,6 +99,13 @@ public:
                     std::bind(&Manager::imu_callback, this, std::placeholders::_1), 
                     imu_opt);
 
+    auto stop_cb = std::bind(&Manager::stop_update_callback, this, std::placeholders::_1);
+    this->create_subscription<std_msgs::msg::Bool>(
+        cfg.topics.input.stop_ioctree_update, 
+        10, 
+        stop_cb,
+        stop_opt);
+
     pub_state       = this->create_publisher<nav_msgs::msg::Odometry>(cfg.topics.output.state, 10);
     pub_frame       = this->create_publisher<sensor_msgs::msg::PointCloud2>(cfg.topics.output.frame, 10);
 
@@ -99,6 +114,8 @@ public:
     pub_downsampled = this->create_publisher<sensor_msgs::msg::PointCloud2>("debug/downsampled", 10);
     pub_to_match    = this->create_publisher<sensor_msgs::msg::PointCloud2>("debug/to_match", 10);
 
+    // Initialize TF broadcaster
+    tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
     auto param_names = this->list_parameters({}, 100).names;
     auto params = this->get_parameters(param_names);
@@ -174,6 +191,9 @@ public:
       cv_prop_stamp_.notify_one();
 
       pub_state->publish(toROS(state_));
+      if (cfg.frames.tf_pub) {
+        broadcastTF(state_, cfg.frames.world, cfg.frames.body);
+      }
     }
 
   }
@@ -302,6 +322,29 @@ PointCloudT::Ptr new_processed(new PointCloudT);
       stop_ioctree_update_ = msg->data;
       RCLCPP_INFO(this->get_logger(), "Stopping ioctree updates from now onwards");
     }
+  }
+
+  void broadcastTF(const State& current_state, const std::string& world_frame, const std::string& body_frame) {
+    geometry_msgs::msg::TransformStamped tf_msg;
+
+    // Set the timestamp for the transform
+    tf_msg.header.stamp = rclcpp::Time(current_state.stamp); // Use state's timestamp
+    tf_msg.header.frame_id = world_frame;
+    tf_msg.child_frame_id = body_frame;
+
+    // Set translation
+    tf_msg.transform.translation.x = current_state.p().x();
+    tf_msg.transform.translation.y = current_state.p().y();
+    tf_msg.transform.translation.z = current_state.p().z();
+
+    // Set rotation
+    tf_msg.transform.rotation.x = current_state.quat().x();
+    tf_msg.transform.rotation.y = current_state.quat().y();
+    tf_msg.transform.rotation.z = current_state.quat().z();
+    tf_msg.transform.rotation.w = current_state.quat().w();
+
+    // Broadcast the transform
+    tf_broadcaster_->sendTransform(tf_msg);
   }
 
 };

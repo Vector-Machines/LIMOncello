@@ -66,7 +66,7 @@ sensor_msgs::msg::PointCloud2 toROS(const PointCloudT::Ptr& cloud) {
   sensor_msgs::msg::PointCloud2 out;
   pcl::toROSMsg(*cloud, out);
   out.header.stamp = rclcpp::Clock(RCL_ROS_TIME).now();
-  out.header.frame_id = Config::getInstance().topics.frame_id;
+  out.header.frame_id = Config::getInstance().frames.world;
 
   return out;
 }
@@ -90,39 +90,40 @@ nav_msgs::msg::Odometry toROS(State& state) {
   out.twist.twist.angular.y = state.w(1) - state.b_w()(1);
   out.twist.twist.angular.z = state.w(2) - state.b_w()(2);
 
-  out.header.frame_id = Config::getInstance().topics.frame_id;
+  out.header.frame_id = cfg.frames.world;
+  out.child_frame_id = cfg.frames.body;
   out.header.stamp = rclcpp::Clock(RCL_ROS_TIME).now();
 
   return out;
 }
 
-
 void fill_config(Config& cfg, rclcpp::Node* n) {
-
   n->get_parameter("verbose", cfg.verbose);
   n->get_parameter("debug",   cfg.debug);
-
+  
   // TOPICS
   n->get_parameter("topics.input.lidar",  cfg.topics.input.lidar);
   n->get_parameter("topics.input.imu",    cfg.topics.input.imu);
+  n->get_parameter("topics.input.stop_ioctree_update", cfg.topics.input.stop_ioctree_update);
   n->get_parameter("topics.output.state", cfg.topics.output.state);
   n->get_parameter("topics.output.frame", cfg.topics.output.frame);
-  n->get_parameter("topics.frame_id",     cfg.topics.frame_id);
+  
+  // FRAMES
+  n->get_parameter("frames.world", cfg.frames.world);
+  n->get_parameter("frames.body", cfg.frames.body);
+  n->get_parameter("frames.tf_pub", cfg.frames.tf_pub);
 
   // SENSORS
   n->get_parameter("sensors.lidar.type",         cfg.sensors.lidar.type);
   n->get_parameter("sensors.lidar.end_of_sweep", cfg.sensors.lidar.end_of_sweep);
   n->get_parameter("sensors.imu.hz",             cfg.sensors.imu.hz);
-
+  n->get_parameter("sensors.time_offset", cfg.sensors.time_offset);
+  n->get_parameter("sensors.TAI_offset",  cfg.sensors.TAI_offset);
 
   n->get_parameter("sensors.calibration.gravity", cfg.sensors.calibration.gravity);
   n->get_parameter("sensors.calibration.accel",         cfg.sensors.calibration.accel);
   n->get_parameter("sensors.calibration.gyro",          cfg.sensors.calibration.gyro);
   n->get_parameter("sensors.calibration.time",          cfg.sensors.calibration.time);
-
-  n->get_parameter("sensors.time_offset", cfg.sensors.time_offset);
-  n->get_parameter("sensors.TAI_offset",  cfg.sensors.TAI_offset);
-
 
   // SENSORS - EXTRINSICS (imu2baselink)
   {
@@ -132,20 +133,16 @@ void fill_config(Config& cfg, rclcpp::Node* n) {
     cfg.sensors.extrinsics.imu2baselink_T.translate(Eigen::Vector3d(tmp[0], tmp[1], tmp[2]));
   }
 
-
   {
     std::vector<double> tmp;
     n->get_parameter("sensors.extrinsics.imu2baselink.R", tmp);
-
     Eigen::Matrix3d R_imu = (
       Eigen::AngleAxisd(tmp[0] * M_PI / 180.0, Eigen::Vector3d::UnitX()) *
       Eigen::AngleAxisd(tmp[1] * M_PI / 180.0, Eigen::Vector3d::UnitY()) *
       Eigen::AngleAxisd(tmp[2] * M_PI / 180.0, Eigen::Vector3d::UnitZ())
     ).toRotationMatrix();
-
     cfg.sensors.extrinsics.imu2baselink_T.rotate(R_imu);
   }
-
 
   // SENSORS - EXTRINSICS (lidar2baselink)
   {
@@ -154,7 +151,6 @@ void fill_config(Config& cfg, rclcpp::Node* n) {
     cfg.sensors.extrinsics.lidar2baselink_T.setIdentity();
     cfg.sensors.extrinsics.lidar2baselink_T.translate(Eigen::Vector3d(tmp[0], tmp[1], tmp[2]));
   }
-
 
   {
     std::vector<double> tmp;
@@ -177,13 +173,11 @@ void fill_config(Config& cfg, rclcpp::Node* n) {
     cfg.sensors.intrinsics.accel_bias = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);
   }
 
-
   {
     std::vector<double> tmp;
     n->get_parameter("sensors.intrinsics.gyro_bias", tmp);
     cfg.sensors.intrinsics.gyro_bias = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);
   }
-
 
   {
     std::vector<double> tmp;
@@ -193,14 +187,12 @@ void fill_config(Config& cfg, rclcpp::Node* n) {
                                  tmp[6], tmp[7], tmp[8];
   }
 
-
   // FILTERS
   {
     std::vector<double> tmp;
     n->get_parameter("filters.voxel_grid.leaf_size", tmp);
     cfg.filters.voxel_grid.leaf_size = Eigen::Vector4d(tmp[0], tmp[1], tmp[2], 1.);
   }
-
 
   n->get_parameter("filters.min_distance.active", cfg.filters.min_distance.active);
   n->get_parameter("filters.min_distance.value",  cfg.filters.min_distance.value);
@@ -217,20 +209,16 @@ void fill_config(Config& cfg, rclcpp::Node* n) {
   n->get_parameter("IKFoM.max_iters",           cfg.ikfom.max_iters);
   n->get_parameter("IKFoM.tolerance",           cfg.ikfom.tolerance);
   n->get_parameter("IKFoM.lidar_noise",         cfg.ikfom.lidar_noise);
-
   n->get_parameter("IKFoM.covariance.gyro",       cfg.ikfom.covariance.gyro);
   n->get_parameter("IKFoM.covariance.accel",      cfg.ikfom.covariance.accel);
   n->get_parameter("IKFoM.covariance.bias_gyro",  cfg.ikfom.covariance.bias_gyro);
   n->get_parameter("IKFoM.covariance.bias_accel", cfg.ikfom.covariance.bias_accel);
-
   n->get_parameter("IKFoM.plane.points",          cfg.ikfom.plane.points);
   n->get_parameter("IKFoM.plane.max_sqrt_dist",   cfg.ikfom.plane.max_sqrt_dist);
   n->get_parameter("IKFoM.plane.plane_threshold", cfg.ikfom.plane.plane_threshold);
 
   // iOctree
-  n->get_parameter("iOctree.min_extent", cfg.ioctree.min_extent);
-  n->get_parameter("iOctree.bucket_size", cfg.ioctree.bucket_size);
   n->get_parameter("iOctree.downsample",  cfg.ioctree.downsample);
+  n->get_parameter("iOctree.bucket_size", cfg.ioctree.bucket_size);
+  n->get_parameter("iOctree.min_extent",  cfg.ioctree.min_extent);
 }
-
-

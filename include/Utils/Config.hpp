@@ -18,20 +18,23 @@ struct Config {
 	bool debug;
 
   struct Topics {
-  	struct {
-  		std::string lidar;
-  		std::string imu;
-			std::string stop_ioctree_udate;
-  	} input;
+    struct {
+      std::string lidar;
+      std::string imu;
+      std::string stop_ioctree_update;
+    } input;
 
-  	struct {
-  		std::string state;
-  		std::string frame;
-  	} output;
-  	
-  	std::string frame_id;
+    struct {
+      std::string state;
+      std::string frame;
+    } output;
   } topics;
 
+  struct Frames {
+    std::string world;
+    std::string body;
+    bool tf_pub;
+  } frames;
 
   struct Sensors {
   	struct { 

@@ -1,0 +1,92 @@
+limoncello:
+  ros__parameters:
+
+    topics:
+      input:
+        lidar: /livox/lidar
+        imu: /livox/imu
+        stop_ioctree_update: /limoncello/stop_update
+      output:
+        state: state  
+        frame: full_pcl
+
+    frames:
+      # output frames (the transform between frames will be broadcasted)
+      world: odom
+      body: base_link
+      tf_pub: true
+
+    verbose: true   # print performance board
+    debug: true    # fill useful intermediate pcl (deskewed, processed ...) for visualization
+
+    sensors:
+      lidar:
+        type: 3     # LiDAR type (3: LIVOX)
+        end_of_sweep: false # not applicable for Livox
+      imu:
+        hz: 200     # Mid-360 IMU frequency is 200Hz
+
+      calibration:  # automatic IMU calibration
+        gravity_align: true     # estimate gravity vector
+        accel: true             # estimate lin. accel. bias
+        gyro: true              # estimate ang. vel. bias
+        time: 5.0               # calibration time (robot must be stationary)
+
+      time_offset: true # account for potential sync offset between IMU and LiDAR
+      TAI_offset: 0.0
+
+      extrinsics:
+        imu2baselink:
+          t: [-0.011, -0.02329, 0.59642]  # Using values from your fast_limo.yaml
+          R: [0.0, 0.0, 0.0]              # roll, pitch, yaw [deg]
+
+        lidar2baselink:
+          t: [0.0, 0.0, 0.5523]          # Using values from your fast_limo.yaml
+          R: [0.0, 0.0, 0.0]             # roll, pitch, yaw [deg]
+
+        gravity: 9.80665                 # standard gravity value
+
+      intrinsics:
+        accel_bias: [0.01, 0.01, 0.01]   # [m/s^2]
+        gyro_bias: [0.01, 0.01, 0.01]    # [rad/s]
+        sm: [1.0, 0.0, 0.0,
+             0.0, 1.0, 0.0,
+             0.0, 0.0, 1.0]              # sensor-to-standard axis mapping matrix
+      
+    filters:
+      voxel_grid:
+        leaf_size: [0.1, 0.1, 0.1]       # Similar to your Fast-LIMO configuration
+
+      min_distance:                       # sphere crop
+        active: true
+        value: 1.0                        # [m] Using Fast-LIMO value
+
+      fov:                                # crop field of view
+        active: false
+        value: 120.0                      # [deg]
+      
+      rate_sampling:                      # quick downsample
+        active: false
+        value: 4                          # Using your Fast-LIMO value
+
+    IKFoM:                               # Iterative Kalman Filter on Manifolds lib
+      query_iters: 3                     # number of iterations doing KNN from max iterations 
+      max_iters: 3                       # max num of iterations of the IESEKF
+      tolerance: 0.001                   # Using value similar to Fast-LIMO LIMITS
+      lidar_noise: 0.001
+
+      covariance:
+        gyro: 0.01                       # [m^2/s^2] Using your tuned Fast-LIMO values
+        accel: 0.1                       # [rad^2]
+        bias_gyro: 0.001                 # [m^2/s^2 * sqrt(s)]
+        bias_accel: 0.01                 # [rad/s * sqrt(s)]
+      
+      plane:                             # plane features for point to plane ICP
+        points: 5                        # Using number from your Fast-LIMO config
+        max_sqrt_dist: 2.0               # [m] Using your Fast-LIMO MAX_DIST_PLANE
+        plane_threshold: 0.05            # [m] Using your Fast-LIMO PLANES_THRESHOLD
+        
+    iOctree:
+      min_extent: 0.2                    # Minimum cell size, similar to Fast-LIMO voxel
+      bucket_size: 5                     # Maximum points per octree leaf
+      downsample: true                   # Downsample when inserting into the octree
