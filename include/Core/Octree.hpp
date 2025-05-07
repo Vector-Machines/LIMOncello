@@ -258,7 +258,7 @@ struct Octree {
     clear();
     
     Point min = Point::Constant(std::numeric_limits<float>::max());
-    Point max = Point::Constant(std::numeric_limits<float>::min());
+    Point max = Point::Constant(std::numeric_limits<float>::lowest());
     Points points = processPoints(pts, min, max);
 
     if (points.empty())

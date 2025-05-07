@@ -133,10 +133,6 @@ public:
 
         if (cfg.sensors.calibration.gravity_align) {
           grav_vec = accel_avg.normalized() * abs(cfg.sensors.extrinsics.gravity);
-          Eigen::Quaterniond q = Eigen::Quaterniond::FromTwoVectors(
-                                  grav_vec, 
-                                  Eigen::Vector3d(0., 0., cfg.sensors.extrinsics.gravity));
-          state_.quat(q);
           state_.g(-grav_vec);
         }
         
@@ -151,7 +147,7 @@ public:
 
     } else {
       double dt = imu.stamp - prev_imu_.stamp;
-      dt = (dt < 0 or dt > 0.1) ? 1./cfg.sensors.imu.hz : dt;
+      dt = (dt < 0 or dt >= imu.stamp) ? 1./cfg.sensors.imu.hz : dt;
 
       imu = imu2baselink(imu, dt);
 
@@ -252,29 +248,15 @@ PROFC_NODE("LiDAR Callback")
 
   mtx_state_.unlock();
 
+  
     PointCloudT::Ptr global(new PointCloudT);
+    global->width  = static_cast<uint32_t>(global->points.size());
+    global->height = 1;                     
+    pcl::transformPointCloud(*deskewed, *global, T);
 
-    for (const auto& p : deskewed->points) {
-      auto pt = T*p.getVector3fMap();
-      PointT pp = p;
-      pp.x = pt.x(); 
-      pp.y = pt.y(); 
-      pp.z = pt.z(); 
-      global->points.push_back(pp);
-    }
-    // pcl::transformPointCloud(*deskewed, *global, T); ORIGINAL
-
-PointCloudT::Ptr new_processed(new PointCloudT);
-
-    for (const auto& p : processed->points) {
-      auto pt = T*p.getVector3fMap();
-      PointT pp = p;
-      pp.x = pt.x(); 
-      pp.y = pt.y(); 
-      pp.z = pt.z(); 
-      new_processed->points.push_back(pp);
-    }
-    // pcl::transformPointCloud(*processed, *processed, T); ORIGINAL
+    processed->height = 1;                     
+    processed->width  = static_cast<uint32_t>(processed->points.size());
+    pcl::transformPointCloud(*processed, *processed, T);
 
     // Publish
     pub_state->publish(toROS(state_));
@@ -288,7 +270,7 @@ PointCloudT::Ptr new_processed(new PointCloudT);
     }
 
     // Update map
-    ioctree_.update(new_processed->points);
+    ioctree_.update(processed->points);
 
     if (cfg.verbose)
       PROFC_PRINT()
