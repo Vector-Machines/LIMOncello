@@ -63,7 +63,7 @@ public:
     Config& cfg = Config::getInstance();
     fill_config(cfg, this);
 
-    imu_calibrated_ = not (cfg.sensors.calibration.gravity_align 
+    imu_calibrated_ = not (cfg.sensors.calibration.gravity 
                            or cfg.sensors.calibration.accel
                            or cfg.sensors.calibration.gyro); 
 
@@ -73,8 +73,8 @@ public:
 
     // Set callbacks and publishers
     rclcpp::SubscriptionOptions lidar_opt, imu_opt;
-    lidar_opt.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-    imu_opt.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    lidar_opt.callback_group = create_callback_group();
+    imu_opt.callback_group = create_callback_group();
 
     lidar_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
                     cfg.topics.input.lidar, 
@@ -131,7 +131,7 @@ public:
         gyro_avg /= N;
         accel_avg /= N;
 
-        if (cfg.sensors.calibration.gravity_align) {
+        if (cfg.sensors.calibration.gravity) {
           grav_vec = accel_avg.normalized() * abs(cfg.sensors.extrinsics.gravity);
           state_.g(-grav_vec);
         }
@@ -250,8 +250,8 @@ PROFC_NODE("LiDAR Callback")
 
   
     PointCloudT::Ptr global(new PointCloudT);
-    global->width  = static_cast<uint32_t>(global->points.size());
-    global->height = 1;                     
+    deskewed->width  = static_cast<uint32_t>(deskewed->points.size());
+    deskewed->height = 1;                     
     pcl::transformPointCloud(*deskewed, *global, T);
 
     processed->height = 1;                     

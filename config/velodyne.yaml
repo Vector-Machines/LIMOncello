@@ -11,8 +11,8 @@ limoncello:
       frame_id: global
 
 
-    verbose: true   # print debug/performance board
-    debug: false     # fill useful intermediate pcl (deskewed, processed ...) 
+    verbose: false   # print debug/performance board
+    debug: true     # fill useful intermediate pcl (deskewed, processed ...) 
                     # for visualizing purposes
 
     sensors:
@@ -24,7 +24,7 @@ limoncello:
         hz: 400
 
       calibration:  # automatic IMU calibration (if all set to false, no calibration will be done)
-        gravity_align: true     # estimate gravity vector
+        gravity: true     # estimate gravity vector
         accel: true             # estimate lin. accel. bias
         gyro: true              # estimate ang. vel. bias
         time: 1.5               # time to estimate (during this time, the 
@@ -41,7 +41,7 @@ limoncello:
 
         lidar2baselink:
           t: [1.10, 0.0, 0.05] # (x, y, z) [meters]
-          R: [0.0, -0.0520403, 0.0]   # roll, pitch, yaw [deg]
+          R: [0.0, -4.520403, 0.0]   # roll, pitch, yaw [deg]
         gravity: 9.80304
 
 
@@ -74,7 +74,7 @@ limoncello:
 
       fov: # crop field of view
         active: false
-        value: 180  # [deg]
+        value: 180. # [deg]
       
       rate_sampling: # quick downsample
         active: false
@@ -83,10 +83,9 @@ limoncello:
 
     IKFoM:  # Iterative Kalman Filter on Manifolds lib
       query_iters: 3 # number of iterations doing KNN from max iterations 
-      max_iters: 4  # max num of iterations of the IESEKF
+      max_iters: 3  # max num of iterations of the IESEKF
       tolerance: 0.001                      
-      estimate_extrinsics: false
-      lidar_noise: 0.001
+      lidar_noise: 0.0005
 
       covariance:
         gyro: 6.01e-4        # [m^2/s^2]
@@ -95,9 +94,9 @@ limoncello:
         bias_accel: 3.38e-4  # [rad/s * sqrt(s)]
       
       plane:                     # plane features for point to plane ICP
-        points: 5                # num of points that constitute a plane
-        max_sqrt_dist: 2.0       # [m] if a neighor exceeds is too far the plane is not valid
-        plane_threshold: 5.0e-2  # [m] max distance from point to plane to be 
+        points: 12                # num of points that constitute a plane
+        max_sqrt_dist: 1.0       # [m] if a neighor exceeds is too far the plane is not valid
+        plane_threshold: 0.1  # [m] max distance from point to plane to be 
                                  # considered a valid plane 
         
 

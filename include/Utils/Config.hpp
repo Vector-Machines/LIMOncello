@@ -43,7 +43,7 @@ struct Config {
   	} imu;
 
   	struct {
-  		bool gravity_align;
+  		bool gravity;
   		bool accel;
   		bool gyro;
   		float time;
@@ -93,7 +93,6 @@ struct Config {
   	int query_iters;
   	int max_iters;
   	float tolerance;
-  	bool estimate_extrinsics;
   	float lidar_noise;
 
   	struct {

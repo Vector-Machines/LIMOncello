@@ -25,10 +25,10 @@ limoncello:
         hz: 100
 
       calibration:  # automatic IMU calibration (if all set to false, no calibration will be done)
-        gravity_align: true     # estimate gravity vector
+        gravity: true     # estimate gravity vector
         accel: true             # estimate lin. accel. bias
         gyro: true              # estimate ang. vel. bias
-        time: 7.               # time to estimate (during this time, the 
+        time: 1.               # time to estimate (during this time, the 
                                # robot must be at stand still)
 
       time_offset: true # whether to take into account a possible sync offset

@@ -11,8 +11,9 @@ def generate_launch_description():
         package='limoncello',
         namespace='',
         executable='limoncello',
-        name='limovelo',
+        name='limoncello',
         output='screen',
+        # prefix=['gdbserver localhost:3000'],
         parameters=[
             PathJoinSubstitution([FindPackageShare('limoncello'), 'config', 'velodyne.yaml']),
             {'use_sim_time': False}
