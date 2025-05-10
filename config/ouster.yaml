@@ -5,12 +5,17 @@ limoncello:
       input:
         lidar: /ouster/points
         imu:   /ouster/imu
+        stop_ioctree_update: /limoncello/stop_update
         # imu: /EL/Sensors/vectornav/IMU
       output:
         state: state  
         frame: full_pcl
-      frame_id: global
-
+    
+    frames:
+      # output frames (the transform between frames will be broadcasted)
+      world: odom
+      body: base_link
+      tf_pub: true
 
     verbose: true   # print performance board
     debug: false     # fill useful intermediate pcl (deskewed, processed ...) 
@@ -25,7 +30,7 @@ limoncello:
         hz: 100
 
       calibration:  # automatic IMU calibration (if all set to false, no calibration will be done)
-        gravity_align: true     # estimate gravity vector
+        gravity: true     # estimate gravity vector
         accel: true             # estimate lin. accel. bias
         gyro: true              # estimate ang. vel. bias
         time: 7.               # time to estimate (during this time, the 
@@ -98,7 +103,7 @@ limoncello:
         bias_accel: 3.38e-4  # [rad/s * sqrt(s)]
       
       plane:                     # plane features for point to plane ICP
-        points: 15                # num of points that constitute a plane
+        points: 12                # num of points that constitute a plane
         max_sqrt_dist: 1.0       # [m] if a neighor exceeds is too far the plane is not valid
         plane_threshold: 0.1  # [m] max distance from point to plane to be 
                                  # considered a valid plane 

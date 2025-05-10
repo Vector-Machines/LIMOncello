@@ -28,7 +28,7 @@ LIMOncello is header-only and the core depends only on:
 - [Eigen3](https://eigen.tuxfamily.org/index.php?title=Main_Page)
 - [PCL 1.8](https://pointclouds.org/)
 - [oneTBB](https://github.com/uxlfoundation/oneTBB)
-
+- [manif](https://github.com/artivis/manif), needs to be installed [see](https://artivis.github.io/manif/tutorial/cpp/) 
 ## TODOs
 
 LIMOncello is still in progress, but the core is considered finished and working with ROS1.

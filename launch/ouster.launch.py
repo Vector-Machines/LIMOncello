@@ -16,7 +16,6 @@ def generate_launch_description():
             PathJoinSubstitution([FindPackageShare('limoncello'), 'config', 'ouster.yaml']),
             {'use_sim_time': False}
         ],
-        # prefix="gdb --args"
     )
 
     return LaunchDescription([

@@ -5,11 +5,16 @@ limoncello:
       input:
         lidar: /velodyne_points
         imu: /EL/Sensors/vectornav/IMU
+        stop_ioctree_update: /stop
       output:
         state: state  
         frame: full_pcl
-      frame_id: global
-
+    
+    frames:
+      # output frames (the transform between frames will be broadcasted)
+      world: global
+      body: base_link
+      tf_pub: true
 
     verbose: true   # print debug/performance board
     debug: false     # fill useful intermediate pcl (deskewed, processed ...) 
@@ -24,7 +29,7 @@ limoncello:
         hz: 400
 
       calibration:  # automatic IMU calibration (if all set to false, no calibration will be done)
-        gravity_align: true     # estimate gravity vector
+        gravity: true     # estimate gravity vector
         accel: true             # estimate lin. accel. bias
         gyro: true              # estimate ang. vel. bias
         time: 1.5               # time to estimate (during this time, the 
@@ -74,7 +79,7 @@ limoncello:
 
       fov: # crop field of view
         active: false
-        value: 180  # [deg]
+        value: 180.  # [deg]
       
       rate_sampling: # quick downsample
         active: false
@@ -94,9 +99,9 @@ limoncello:
         bias_accel: 3.38e-4  # [rad/s * sqrt(s)]
       
       plane:                     # plane features for point to plane ICP
-        points: 5                # num of points that constitute a plane
-        max_sqrt_dist: 2.0       # [m] if a neighor exceeds is too far the plane is not valid
-        plane_threshold: 5.0e-2  # [m] max distance from point to plane to be 
+        points: 12                # num of points that constitute a plane
+        max_sqrt_dist: 1.0       # [m] if a neighor exceeds is too far the plane is not valid
+        plane_threshold: 0.1  # [m] max distance from point to plane to be 
                                  # considered a valid plane 
         
 

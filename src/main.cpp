@@ -45,6 +45,8 @@ class Manager : public rclcpp::Node {
   // ROS
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr lidar_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr         imu_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr           stop_sub_;
+
 
   // Publishers
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_state;
@@ -73,6 +75,8 @@ public:
     Config& cfg = Config::getInstance();
     fill_config(cfg, this);
 
+    state_.init();
+
     imu_calibrated_ = not (cfg.sensors.calibration.gravity
                            or cfg.sensors.calibration.accel
                            or cfg.sensors.calibration.gyro); 
@@ -83,9 +87,9 @@ public:
 
     // Set callbacks and publishers
     rclcpp::SubscriptionOptions lidar_opt, imu_opt, stop_opt;
-    lidar_opt.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-    imu_opt.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-    stop_opt.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    lidar_opt.callback_group = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+    imu_opt.callback_group = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+    stop_opt.callback_group = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
 
     lidar_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
                     cfg.topics.input.lidar, 
@@ -99,12 +103,11 @@ public:
                     std::bind(&Manager::imu_callback, this, std::placeholders::_1), 
                     imu_opt);
 
-    auto stop_cb = std::bind(&Manager::stop_update_callback, this, std::placeholders::_1);
-    this->create_subscription<std_msgs::msg::Bool>(
-        cfg.topics.input.stop_ioctree_update, 
-        10, 
-        stop_cb,
-        stop_opt);
+    stop_sub_  = this->create_subscription<std_msgs::msg::Bool>(
+                    cfg.topics.input.stop_ioctree_update,
+                    10,
+                    std::bind(&Manager::stop_update_callback, this, std::placeholders::_1),
+                    stop_opt);
 
     pub_state       = this->create_publisher<nav_msgs::msg::Odometry>(cfg.topics.output.state, 10);
     pub_frame       = this->create_publisher<sensor_msgs::msg::PointCloud2>(cfg.topics.output.frame, 10);
