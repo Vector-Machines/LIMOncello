@@ -63,6 +63,8 @@ public:
     Config& cfg = Config::getInstance();
     fill_config(cfg, this);
 
+    state_.init();
+
     imu_calibrated_ = not (cfg.sensors.calibration.gravity 
                            or cfg.sensors.calibration.accel
                            or cfg.sensors.calibration.gyro); 
@@ -73,8 +75,8 @@ public:
 
     // Set callbacks and publishers
     rclcpp::SubscriptionOptions lidar_opt, imu_opt;
-    lidar_opt.callback_group = create_callback_group();
-    imu_opt.callback_group = create_callback_group();
+    lidar_opt.callback_group = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+    imu_opt.callback_group = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
 
     lidar_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
                     cfg.topics.input.lidar, 

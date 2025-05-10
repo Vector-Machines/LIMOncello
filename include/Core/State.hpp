@@ -51,7 +51,9 @@ struct State {
 
   double stamp;
 
-  State() : stamp(0.0) { 
+  State() : stamp(0.0) {}
+  
+  void init() { 
     Config& cfg = Config::getInstance();
     Eigen::Vector3d zero_vec = Eigen::Vector3d(0., 0., 0.);
                                                                 //                   Tanget       
@@ -73,6 +75,7 @@ struct State {
     // Control signal noise (never changes)
     Q.setZero();
  
+    
     Q.block<3, 3>(0, 0) = cfg.ikfom.covariance.gyro       * Eigen::Matrix3d::Identity(); // n_w
     Q.block<3, 3>(3, 3) = cfg.ikfom.covariance.accel      * Eigen::Matrix3d::Identity(); // n_a
     Q.block<3, 3>(6, 6) = cfg.ikfom.covariance.bias_gyro  * Eigen::Matrix3d::Identity(); // n_{b_w}
