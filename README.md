@@ -33,7 +33,6 @@ LIMOncello is header-only and the core depends only on:
 
 LIMOncello is still in progress, but the core is considered finished and working with ROS1.
 
-- [ ] Stable ROS2 branch (`ros2/humble`)
 - [ ] Test with LiVOX
 - [ ] Test with Hesai
 - [ ] Incorporate GPS correction
