@@ -73,6 +73,8 @@ public:
     Config& cfg = Config::getInstance();
     fill_config(cfg, this);
 
+    state_.init()
+    
     imu_calibrated_ = not (cfg.sensors.calibration.gravity
                            or cfg.sensors.calibration.accel
                            or cfg.sensors.calibration.gyro); 
