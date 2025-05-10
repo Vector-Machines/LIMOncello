@@ -33,7 +33,6 @@ struct Config {
   struct Frames {
     std::string world;
     std::string body;
-    bool tf_pub;
   } frames;
 
   struct Sensors {

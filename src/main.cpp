@@ -11,9 +11,6 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <std_msgs/msg/bool.hpp>
 
-#include <tf2_ros/transform_broadcaster.h>
-#include <geometry_msgs/msg/transform_stamped.hpp>
-
 #include "Core/Octree.hpp"
 #include "Core/State.hpp"
 #include "Core/Cloud.hpp"
@@ -99,7 +96,7 @@ public:
 
     imu_sub_   = this->create_subscription<sensor_msgs::msg::Imu>(
                     cfg.topics.input.imu, 
-                    1000, 
+                    3000, 
                     std::bind(&Manager::imu_callback, this, std::placeholders::_1), 
                     imu_opt);
 
@@ -194,11 +191,8 @@ public:
       cv_prop_stamp_.notify_one();
 
       pub_state->publish(toROS(state_));
-      if (cfg.frames.tf_pub) {
-        broadcastTF(state_, cfg.frames.world, cfg.frames.body);
-      }
+      tf_broadcaster_->sendTransform(toTF(state_));
     }
-
   }
 
 
@@ -278,28 +272,13 @@ PROFC_NODE("LiDAR Callback")
   mtx_state_.unlock();
 
     PointCloudT::Ptr global(new PointCloudT);
+    deskewed->width  = static_cast<uint32_t>(deskewed->points.size());
+    deskewed->height = 1;                     
+    pcl::transformPointCloud(*deskewed, *global, T);
 
-    for (const auto& p : deskewed->points) {
-      auto pt = T*p.getVector3fMap();
-      PointT pp = p;
-      pp.x = pt.x(); 
-      pp.y = pt.y(); 
-      pp.z = pt.z(); 
-      global->points.push_back(pp);
-    }
-    // pcl::transformPointCloud(*deskewed, *global, T); ORIGINAL
-
-PointCloudT::Ptr new_processed(new PointCloudT);
-
-    for (const auto& p : processed->points) {
-      auto pt = T*p.getVector3fMap();
-      PointT pp = p;
-      pp.x = pt.x(); 
-      pp.y = pt.y(); 
-      pp.z = pt.z(); 
-      new_processed->points.push_back(pp);
-    }
-    // pcl::transformPointCloud(*processed, *processed, T); ORIGINAL
+    processed->height = 1;                     
+    processed->width  = static_cast<uint32_t>(processed->points.size());
+    pcl::transformPointCloud(*processed, *processed, T);
 
     // Publish
     pub_state->publish(toROS(state_));
@@ -313,7 +292,7 @@ PointCloudT::Ptr new_processed(new PointCloudT);
     }
 
     // Update map
-    ioctree_.update(new_processed->points);
+    ioctree_.update(processed->points);
 
     if (cfg.verbose)
       PROFC_PRINT()

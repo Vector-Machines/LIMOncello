@@ -15,7 +15,6 @@ limoncello:
       # output frames (the transform between frames will be broadcasted)
       world: odom
       body: base_link
-      tf_pub: true
 
     verbose: true   # print performance board
     debug: false     # fill useful intermediate pcl (deskewed, processed ...) 

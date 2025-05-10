@@ -14,10 +14,9 @@ limoncello:
       # output frames (the transform between frames will be broadcasted)
       world: global
       body: base_link
-      tf_pub: true
 
     verbose: true   # print debug/performance board
-    debug: false     # fill useful intermediate pcl (deskewed, processed ...) 
+    debug: true     # fill useful intermediate pcl (deskewed, processed ...) 
                     # for visualizing purposes
 
     sensors:

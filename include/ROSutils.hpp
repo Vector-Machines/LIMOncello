@@ -9,6 +9,8 @@
 
 #include <tf2/convert.h>
 #include <tf2_eigen/tf2_eigen.hpp>
+#include <tf2_ros/transform_broadcaster.h>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -77,11 +79,9 @@ nav_msgs::msg::Odometry toROS(State& state) {
 
   nav_msgs::msg::Odometry out;
 
-  // Pose/Attitude
   out.pose.pose.position    = tf2::toMsg(state.p());
   out.pose.pose.orientation = tf2::toMsg(state.quat());
 
-  // Twist
   out.twist.twist.linear.x = state.v()(0);
   out.twist.twist.linear.y = state.v()(1);
   out.twist.twist.linear.z = state.v()(2);
@@ -97,6 +97,29 @@ nav_msgs::msg::Odometry toROS(State& state) {
   return out;
 }
 
+
+geometry_msgs::msg::TransformStamped toTF(State& state) {
+  Config& cfg = Config::getInstance();
+
+  geometry_msgs::msg::TransformStamped tf_msg;
+
+  tf_msg.transform.translation.x = state.p().x();
+  tf_msg.transform.translation.y = state.p().y();
+  tf_msg.transform.translation.z = state.p().z();
+  
+  tf_msg.transform.rotation.x = state.quat().x();
+  tf_msg.transform.rotation.y = state.quat().y();
+  tf_msg.transform.rotation.z = state.quat().z();
+  tf_msg.transform.rotation.w = state.quat().w();
+ 
+  tf_msg.header.stamp = rclcpp::Clock(RCL_ROS_TIME).now();
+  tf_msg.header.frame_id = cfg.frames.world;
+  tf_msg.child_frame_id = cfg.frames.body;
+
+  return tf_msg;
+}
+
+
 void fill_config(Config& cfg, rclcpp::Node* n) {
   n->get_parameter("verbose", cfg.verbose);
   n->get_parameter("debug",   cfg.debug);
@@ -111,7 +134,6 @@ void fill_config(Config& cfg, rclcpp::Node* n) {
   // FRAMES
   n->get_parameter("frames.world", cfg.frames.world);
   n->get_parameter("frames.body", cfg.frames.body);
-  n->get_parameter("frames.tf_pub", cfg.frames.tf_pub);
 
   // SENSORS
   n->get_parameter("sensors.lidar.type",         cfg.sensors.lidar.type);

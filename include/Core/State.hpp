@@ -105,8 +105,11 @@ PROFC_NODE("predict")
 
 
   void predict(const double& t) {
+    Config& cfg = Config::getInstance();
+
     double dt = t - this->stamp;
-    assert(dt >= 0);
+    if (dt < 0)
+      dt = 1./cfg.sensors.imu.hz; 
 
     X = X.plus(f(a, w, dt) * dt);
   }
