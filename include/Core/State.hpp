@@ -84,15 +84,17 @@ struct State {
 
   void predict(const Imu& imu, const double& dt) {
 PROFC_NODE("predict")
-
+    
     ProcessMatrix Gx, Gf; // Adjoint_X(u)^{-1}, J_r(u)  Sola-18, [https://arxiv.org/abs/1812.01537]
-    X = X.plus(f(imu.lin_accel, imu.ang_vel, dt) * dt, Gx, Gf);
+    BundleT X_tmp = X.plus(f(imu.lin_accel, imu.ang_vel, dt) * dt, Gx, Gf);
 
-   // Update covariance
+    // Update covariance
     ProcessMatrix Fx = Gx + Gf * df_dx(imu, dt) * dt; // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (26)
     MappingMatrix Fw = Gf * df_dw(imu, dt) * dt;      // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (27)
 
     P = Fx * P * Fx.transpose() + Fw * Q * Fw.transpose(); 
+
+    X = X_tmp;
 
     // Save info
     a = imu.lin_accel;
@@ -232,7 +234,7 @@ PROFC_NODE("update")
           Eigen::Matrix<double, 3, DoFObs> J_s; // Jacobian of state (pos., vel., rot., t)
           Eigen::Vector3d g = s.X.element<0>().act(s.I2L_affine3d() * m.p, J_s);
 
-          H.block<1, DoFObs>(i, 0) << m.n.head(3).transpose() * J_s;;
+          H.block<1, DoFObs>(i, 0) << m.n.head(3).transpose() * J_s;
           z(i) = -Match::dist2plane(m.n, g);
         }
       ); // end for_each

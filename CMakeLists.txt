@@ -1,23 +1,13 @@
-cmake_minimum_required(VERSION 3.16)
-project(limoncello LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.5)
+project(limoncello)
 
-# Enable ccache if available
-find_program(CCACHE_PROGRAM ccache)
-if(CCACHE_PROGRAM)
-  set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
-endif()
-
-# Default build type
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+if (NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type (Release or Debug)" FORCE)
 endif()
 
 # Require C++17
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -pthread -fexceptions -O3 -lm -lblas -llapack")
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# add_compile_options(-g)
 
 # ROS2 dependencies
 find_package(ament_cmake REQUIRED)
@@ -33,51 +23,62 @@ find_package(tf2_eigen REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(TBB REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(PCL REQUIRED)
-find_package(manif REQUIRED)
+find_package(PCL 1.8 REQUIRED)
 
-# Define executable
-add_executable(${PROJECT_NAME} src/main.cpp)
+# Find ROS packages
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(pcl_conversions REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_eigen REQUIRED)
 
 # Include directories
-target_include_directories(${PROJECT_NAME}
-  PRIVATE
-    include
-    ${PCL_INCLUDE_DIRS}
-    ${EIGEN3_INCLUDE_DIRS}
-    ${manif_INCLUDE_DIRS}
+include_directories(
+  include
+  ${PCL_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
 )
 
-# Compiler options
-target_compile_options(${PROJECT_NAME}
-  PRIVATE
-    $<$<CONFIG:Release>:-O3;-march=native>
-    -pthread
-    -fexceptions
+# Manif
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/external/manif)
+
+# Link libraries
+set(LINK_LIBRARIES
+  PRIVATE manif
+  ${PCL_LIBRARIES}
+  ${Boost_LIBRARIES}
+  ${TBB_IMPORTED_TARGETS}
 )
 
-# Link libraries with explicit keyword (PRIVATE)
-target_link_libraries(${PROJECT_NAME}
-  PRIVATE
-    ${PCL_LIBRARIES}
-    ${Boost_LIBRARIES}
-    ${TBB_IMPORTED_TARGETS}
+# Create executable
+add_executable(${PROJECT_NAME} src/main.cpp)
+
+ament_target_dependencies(${PROJECT_NAME} 
+    PUBLIC rclcpp 
+    PUBLIC pcl_conversions
+    PUBLIC sensor_msgs 
+    PUBLIC nav_msgs 
+    PUBLIC tf2 
+    PUBLIC tf2_ros 
+    PUBLIC tf2_eigen
 )
 
-# ROS2 dependencies (ament_target_dependencies)
-ament_target_dependencies(${PROJECT_NAME}
-  PUBLIC 
-  rclcpp
-  pcl_conversions
-  sensor_msgs
-  nav_msgs
-  tf2
-  tf2_ros
-  tf2_eigen
+# Link the executable with libraries
+target_link_libraries(${PROJECT_NAME} ${LINK_LIBRARIES})
+
+install(TARGETS 
+  ${PROJECT_NAME}
+  DESTINATION lib/${PROJECT_NAME} 
 )
 
-# Install rules
-install(TARGETS ${PROJECT_NAME} DESTINATION lib/${PROJECT_NAME})
-install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
+
+install(DIRECTORY
+  launch
+  config
+  DESTINATION share/${PROJECT_NAME}
+)
 
 ament_package()

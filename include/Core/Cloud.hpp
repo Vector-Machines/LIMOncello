@@ -117,18 +117,19 @@ PROFC_NODE("filter")
 
         // Distance filter
         if (cfg.filters.min_distance.active) {
-          if (Eigen::Vector3f(p.x, p.y, p.z).norm() <= cfg.filters.min_distance.value)
+          if (Eigen::Vector3f(p.x, p.y, p.z).squaredNorm() 
+              <= cfg.filters.min_distance.value*cfg.filters.min_distance.value)
               pass = false;
         }
 
         // Rate filter
-        if (cfg.filters.rate_sampling.active) {
+        if (pass and cfg.filters.rate_sampling.active) {
           if (index % cfg.filters.rate_sampling.value != 0)
               pass = false;
         }
 
         // Field of view filter
-        if (cfg.filters.fov.active) {
+        if (pass and cfg.filters.fov.active) {
           if (fabs(atan2(p.y, p.x)) >= cfg.filters.fov.value)
               pass = false;
         }

@@ -28,7 +28,6 @@ struct EIGEN_ALIGN16 PointT {
     double timestamp;  // (Hesai) absolute timestamp in seconds
                        // (Livox) absolute timestamp in (seconds * 10e9)
   };
-  float range;         // (Ouster) distance in militers
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
@@ -40,7 +39,6 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(PointT,
   (std::uint32_t, t, t)
   (float, time, time)
   (double, timestamp, timestamp)
-  (float, range, range)
 )
 
 typedef pcl::PointCloud<PointT> PointCloudT;
@@ -65,7 +63,7 @@ PointTime point_time_func() {
     return [] (const PointT& p, const double& sweep_time) { return p.timestamp; };
 
   } else if (cfg.sensors.lidar.type == 3) { // LIVOX
-    return [] (const PointT& p, const double& sweep_time) { return p.timestamp * 1e-9f; };
+    return [] (const PointT& p, const double& sweep_time) { return sweep_time + p.timestamp * 1e-9f; };
 
   } else {
     std::cout << "-------------------------------------------\n";
