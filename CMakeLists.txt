@@ -31,6 +31,9 @@ find_package(PCL 1.8 REQUIRED)
 find_package(BLAS REQUIRED)
 find_package(LAPACK REQUIRED)
 
+# Disable testing in manif subdirectory to avoid GTest dependency issues
+set(BUILD_TESTING OFF CACHE BOOL "Disable testing for manif library" FORCE)
+
 # External libraries
 add_subdirectory(external/manif)
 
