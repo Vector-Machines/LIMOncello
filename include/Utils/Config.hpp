@@ -92,8 +92,8 @@ struct Config {
 	struct
 		{
 			bool active;
-			Eigen::Vector4f min_pt;
-			Eigen::Vector4f max_pt;
+			Eigen::Vector3f min_pt;
+			Eigen::Vector3f max_pt;
 		} crop_box;
 
   } filters;

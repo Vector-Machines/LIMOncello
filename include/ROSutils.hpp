@@ -217,13 +217,13 @@ void fill_config(Config& cfg, rclcpp::Node* n) {
 
     n->get_parameter_or("filters.crop_box.active", cfg.filters.crop_box.active, false);
     std::vector<double> min_pt_tmp;
-    n->get_parameter_or("filters.crop_box.min_pt", min_pt_tmp, {-10.0, -10.0, -10.0, 1.0});
-    cfg.filters.crop_box.min_pt = Eigen::Map<Eigen::Vector4f>(std::vector<float>(min_pt_tmp.begin(), min_pt_tmp.end()).data());
+    n->get_parameter_or("filters.crop_box.min_pt", min_pt_tmp, {-1.0, -1.0, -1.0});
+    cfg.filters.crop_box.min_pt = Eigen::Vector3f(min_pt_tmp[0], min_pt_tmp[1], min_pt_tmp[2]);
     std::vector<double> max_pt_tmp;
-    n->get_parameter_or("filters.crop_box.max_pt", max_pt_tmp, {10.0, 10.0, 10.0, 1.0});
-    cfg.filters.crop_box.max_pt = Eigen::Map<Eigen::Vector4f>(std::vector<float>(max_pt_tmp.begin(), max_pt_tmp.end()).data());
+    n->get_parameter_or("filters.crop_box.max_pt", max_pt_tmp, {1.0, 1.0, 1.0});
+    cfg.filters.crop_box.max_pt = Eigen::Vector3f(max_pt_tmp[0], max_pt_tmp[1], max_pt_tmp[2]);
 
-  n->get_parameter("filters.min_distance.active", cfg.filters.min_distance.active);
+    n->get_parameter("filters.min_distance.active", cfg.filters.min_distance.active);
   }
   n->get_parameter("filters.min_distance.value",  cfg.filters.min_distance.value);
 
