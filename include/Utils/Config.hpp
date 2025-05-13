@@ -89,6 +89,13 @@ struct Config {
 			int value;
     } rate_sampling;
 
+	struct
+		{
+			bool active;
+			Eigen::Vector4f min_pt;
+			Eigen::Vector4f max_pt;
+		} crop_box;
+
   } filters;
 
   struct IKFoM {

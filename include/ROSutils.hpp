@@ -214,9 +214,17 @@ void fill_config(Config& cfg, rclcpp::Node* n) {
     std::vector<double> tmp;
     n->get_parameter("filters.voxel_grid.leaf_size", tmp);
     cfg.filters.voxel_grid.leaf_size = Eigen::Vector4d(tmp[0], tmp[1], tmp[2], 1.);
-  }
+
+    n->get_parameter_or("filters.crop_box.active", cfg.filters.crop_box.active, false);
+    std::vector<double> min_pt_tmp;
+    n->get_parameter_or("filters.crop_box.min_pt", min_pt_tmp, {-10.0, -10.0, -10.0, 1.0});
+    cfg.filters.crop_box.min_pt = Eigen::Map<Eigen::Vector4f>(std::vector<float>(min_pt_tmp.begin(), min_pt_tmp.end()).data());
+    std::vector<double> max_pt_tmp;
+    n->get_parameter_or("filters.crop_box.max_pt", max_pt_tmp, {10.0, 10.0, 10.0, 1.0});
+    cfg.filters.crop_box.max_pt = Eigen::Map<Eigen::Vector4f>(std::vector<float>(max_pt_tmp.begin(), max_pt_tmp.end()).data());
 
   n->get_parameter("filters.min_distance.active", cfg.filters.min_distance.active);
+  }
   n->get_parameter("filters.min_distance.value",  cfg.filters.min_distance.value);
 
   n->get_parameter("filters.fov.active", cfg.filters.fov.active);
