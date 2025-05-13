@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.5)
 project(limoncello)
 
+if(POLICY CMP0074)
+  cmake_policy(SET CMP0074 NEW)
+endif()
+
 # Build configuration
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
@@ -39,6 +43,17 @@ target_include_directories(${PROJECT_NAME} PRIVATE
   ${EIGEN3_INCLUDE_DIR}
 )
 
+# Define libraries
+target_link_libraries(${PROJECT_NAME}
+  manif
+  ${PCL_LIBRARIES}
+  ${Boost_LIBRARIES}
+  ${TBB_IMPORTED_TARGETS}
+  Eigen3::Eigen
+  ${BLAS_LIBRARIES}
+  ${LAPACK_LIBRARIES}
+)
+
 # ROS2 dependencies
 ament_target_dependencies(${PROJECT_NAME}
   rclcpp
@@ -48,17 +63,6 @@ ament_target_dependencies(${PROJECT_NAME}
   tf2
   tf2_ros
   tf2_eigen
-)
-
-# Link libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE
-  manif
-  ${PCL_LIBRARIES}
-  ${Boost_LIBRARIES}
-  ${TBB_IMPORTED_TARGETS}
-  Eigen3::Eigen
-  ${BLAS_LIBRARIES}
-  ${LAPACK_LIBRARIES}
 )
 
 # Installation
