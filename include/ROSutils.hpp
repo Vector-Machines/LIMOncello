@@ -112,7 +112,7 @@ geometry_msgs::msg::TransformStamped toTF(State& state) {
   tf_msg.transform.rotation.z = state.quat().z();
   tf_msg.transform.rotation.w = state.quat().w();
  
-  tf_msg.header.stamp = rclcpp::Clock(RCL_ROS_TIME).now();
+  tf_msg.header.stamp = rclcpp::Time(state.stamp);
   tf_msg.header.frame_id = cfg.frames.world;
   tf_msg.child_frame_id = cfg.frames.body;
 
@@ -134,6 +134,7 @@ void fill_config(Config& cfg, rclcpp::Node* n) {
   // FRAMES
   n->get_parameter("frames.world", cfg.frames.world);
   n->get_parameter("frames.body", cfg.frames.body);
+  n->get_parameter("frames.tf_pub", cfg.frames.tf_pub);
 
   // SENSORS
   n->get_parameter("sensors.lidar.type",         cfg.sensors.lidar.type);
