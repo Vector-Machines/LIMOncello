@@ -33,7 +33,6 @@ LIMOncello is header-only and the core depends only on:
 
 LIMOncello is still in progress, but the core is considered finished and working with ROS1.
 
-- [ ] Stable ROS2 branch (`ros2/humble`)
 - [ ] Test with LiVOX
 - [ ] Test with Hesai
 - [ ] Incorporate GPS correction
@@ -49,8 +48,7 @@ from Fast LIMO:
 - [FAST-LIO](https://arxiv.org/abs/2010.08196) and [FAST-LIO2](https://arxiv.org/abs/2107.06829)
 - [Quaternion kinematics for the error-state Kalman filter](https://arxiv.org/abs/1711.02508)
 - [A micro Lie theory for state estimation in robotics](https://arxiv.org/abs/1812.01537)
-- [Absolute humanoid localization and mapping based on IMU Lie group and fiducial markers]
-  (https://digital.csic.es/handle/10261/206456)
+- [Absolute humanoid localization and mapping based on IMU Lie group and fiducial markers](https://digital.csic.es/handle/10261/206456)
 - [iOctree](https://arxiv.org/pdf/2309.08315)
 
 The most important differences between these approaches and LIMOncello are that the latter does
