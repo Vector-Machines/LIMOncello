@@ -82,9 +82,11 @@ nav_msgs::msg::Odometry toROS(State& state) {
   out.pose.pose.position    = tf2::toMsg(state.p());
   out.pose.pose.orientation = tf2::toMsg(state.quat());
 
-  out.twist.twist.linear.x = state.v()(0);
-  out.twist.twist.linear.y = state.v()(1);
-  out.twist.twist.linear.z = state.v()(2);
+  Eigen::Vector3d v = state.R().transpose() * state.v();
+
+  out.twist.twist.linear.x = v(0);
+  out.twist.twist.linear.y = v(1);
+  out.twist.twist.linear.z = v(2);
 
   out.twist.twist.angular.x = state.w(0) - state.b_w()(0);
   out.twist.twist.angular.y = state.w(1) - state.b_w()(1);

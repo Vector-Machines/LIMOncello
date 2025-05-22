@@ -13,11 +13,11 @@ limoncello:
     
     frames:
       # output frames (the transform between frames will be broadcasted)
-      world: odom
+      world: global
       body: base_link
 
-    verbose: true   # print performance board
-    debug: false     # fill useful intermediate pcl (deskewed, processed ...) 
+    verbose: false   # print performance board
+    debug: true     # fill useful intermediate pcl (deskewed, processed ...) 
                     # for visualizing purposes
 
     sensors:
@@ -32,7 +32,7 @@ limoncello:
         gravity: true     # estimate gravity vector
         accel: true             # estimate lin. accel. bias
         gyro: true              # estimate ang. vel. bias
-        time: 7.               # time to estimate (during this time, the 
+        time: 3.               # time to estimate (during this time, the 
                                # robot must be at stand still)
 
       time_offset: true # whether to take into account a possible sync offset
@@ -41,15 +41,13 @@ limoncello:
 
       extrinsics:
         imu2baselink:
-          t: [0.0, 0.0, 0. ]  # (x, y, z) [meters]
-          R: [0., 0., 0.]        # roll, pitch, yaw [deg]
+          t: [0.0, 0.0, 0.98 ]  # (x, y, z) [meters]
+          R: [0., -8.25, 91.25]       # roll, pitch, yaw [deg]
 
         lidar2baselink:
-          t: [0.006253, -0.011775, 0.98007645] # (x, y, z) [meters]
-          R: [0., 0., 0.]   # roll, pitch, yaw [deg]
+          t: [0., 0.,  0.98] # (x, y, z) [meters]
+          R: [0., -8.25, 91.25]     # roll, pitch, yaw [deg]
 
-          # R: [0.333483, -0.00, -0.0038787]   # roll, pitch, yaw [deg]
-          # R: [1.0000263, 0.4999751, -0.0043634]
         gravity: 9.80304
 
 
@@ -78,10 +76,10 @@ limoncello:
 
       min_distance: # sphere crop
         active: true
-        value: 4.5  # [m]
+        value: 5.5  # [m]
 
       fov: # crop field of view
-        active: false
+        active: true
         value: 180.  # [deg]
       
       rate_sampling: # quick downsample
@@ -90,19 +88,19 @@ limoncello:
 
 
     IKFoM:  # Iterative Kalman Filter on Manifolds lib
-      query_iters: 3 # number of iterations doing KNN from max iterations 
-      max_iters: 3  # max num of iterations of the IESEKF
+      query_iters: 4 # number of iterations doing KNN from max iterations 
+      max_iters: 4  # max num of iterations of the IESEKF
       tolerance: 0.0001                      
-      lidar_noise: 0.001
+      lidar_noise: 0.0005
 
       covariance:
-        gyro: 6.01e-4        # [m^2/s^2]
-        accel: 1.53e-2       # [rad^2]
-        bias_gyro: 1.54e-5   # [m^2/s^2 * sqrt(s)]
-        bias_accel: 3.38e-4  # [rad/s * sqrt(s)]
+        gyro: 9.468559e-05        # [m^2/s^2]
+        accel: 0.002387           # [rad^2]
+        bias_gyro: 1.171673e-05   # [m^2/s^2 * sqrt(s)]
+        bias_accel: 0.00029152    # [rad/s * sqrt(s)]
       
       plane:                     # plane features for point to plane ICP
-        points: 12                # num of points that constitute a plane
+        points: 15                # num of points that constitute a plane
         max_sqrt_dist: 1.0       # [m] if a neighor exceeds is too far the plane is not valid
         plane_threshold: 0.1  # [m] max distance from point to plane to be 
                                  # considered a valid plane 
