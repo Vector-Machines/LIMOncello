@@ -114,10 +114,12 @@ PROFC_NODE("filter")
     std::back_inserter(out->points), 
     [&](const PointT& p) mutable {
         bool pass = true;
+        Eigen::Vector3f p_; 
+        p_ = cfg.sensors.extrinsics.lidar2baselink_T.cast<float>() * p.getVector3fMap();
 
         // Distance filter
         if (cfg.filters.min_distance.active) {
-          if (Eigen::Vector3f(p.x, p.y, p.z).squaredNorm() 
+          if (p_.squaredNorm() 
               <= cfg.filters.min_distance.value*cfg.filters.min_distance.value)
               pass = false;
         }
@@ -130,7 +132,7 @@ PROFC_NODE("filter")
 
         // Field of view filter
         if (pass and cfg.filters.fov.active) {
-          if (fabs(atan2(p.y, p.x)) >= cfg.filters.fov.value)
+          if (fabs(atan2(p_.y(), p_.x())) >= cfg.filters.fov.value)
               pass = false;
         }
 
