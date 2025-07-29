@@ -69,9 +69,9 @@ limoncello:
         value: 1.6                        # [m]
 
       crop_box:                          # box crop filter
-        active: false                    # enable/disable the crop box filter
-        min_pt: [-1.0, -1.0, -1.0]       # minimum point coordinates (x, y, z) [m]
-        max_pt: [1.0, 1.0, 1.0]          # maximum point coordinates (x, y, z) [m]
+        active: true                     # enable/disable the crop box filter
+        min_pt: [-2.0, -0.7, -1.0]       # minimum point coordinates (x, y, z) [m]
+        max_pt: [2.0, 0.7, 0.2]          # maximum point coordinates (x, y, z) [m]
 
       fov:                                # crop field of view
         active: false
