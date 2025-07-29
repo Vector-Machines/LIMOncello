@@ -90,6 +90,14 @@ nav_msgs::msg::Odometry toROS(State& state) {
   out.twist.twist.angular.y = state.w(1) - state.b_w()(1);
   out.twist.twist.angular.z = state.w(2) - state.b_w()(2);
 
+  // Populate pose covariance (6x6 matrix as 36-element array)
+  // Order: [x, y, z, roll, pitch, yaw]
+  Eigen::Map<Eigen::Matrix<double, 6, 6, Eigen::RowMajor>>(out.pose.covariance.data()) = state.pose_covariance();
+
+  // Populate twist covariance (6x6 matrix as 36-element array)  
+  // Order: [vx, vy, vz, wx, wy, wz]
+  Eigen::Map<Eigen::Matrix<double, 6, 6, Eigen::RowMajor>>(out.twist.covariance.data()) = state.twist_covariance();
+
   out.header.frame_id = cfg.frames.world;
   out.child_frame_id = cfg.frames.body;
   out.header.stamp = rclcpp::Clock(RCL_ROS_TIME).now();

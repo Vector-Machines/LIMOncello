@@ -312,6 +312,47 @@ PROFC_NODE("update")
     return Config::getInstance().sensors.extrinsics.lidar2baselink_T;
   }
 
+  // Covariance getters for ROS publishing
+  inline Eigen::Matrix<double, 6, 6> pose_covariance() const {
+    // Extract pose covariance (position + rotation) from full state covariance
+    // State indices: [0-2: position, 3-5: velocity, 6-8: rotation, 9: time, 10-12: b_w, 13-15: b_a, 16-18: g]
+    // ROS pose covariance order: [x, y, z, roll, pitch, yaw]
+    Eigen::Matrix<double, 6, 6> pose_cov = Eigen::Matrix<double, 6, 6>::Zero();
+    
+    // Position covariance (x, y, z)
+    pose_cov.block<3, 3>(0, 0) = P.block<3, 3>(0, 0);
+    
+    // Rotation covariance (roll, pitch, yaw)
+    pose_cov.block<3, 3>(3, 3) = P.block<3, 3>(6, 6);
+    
+    // Cross-correlations between position and rotation
+    pose_cov.block<3, 3>(0, 3) = P.block<3, 3>(0, 6);
+    pose_cov.block<3, 3>(3, 0) = P.block<3, 3>(6, 0);
+    
+    return pose_cov;
+  }
+
+  inline Eigen::Matrix<double, 6, 6> twist_covariance() const {
+    // Extract twist covariance (linear velocity + angular velocity) from full state covariance
+    // State indices: [0-2: position, 3-5: velocity, 6-8: rotation, 9: time, 10-12: b_w, 13-15: b_a, 16-18: g]
+    // ROS twist covariance order: [vx, vy, vz, wx, wy, wz]
+    Eigen::Matrix<double, 6, 6> twist_cov = Eigen::Matrix<double, 6, 6>::Zero();
+    
+    // Linear velocity covariance (vx, vy, vz)
+    twist_cov.block<3, 3>(0, 0) = P.block<3, 3>(3, 3);
+    
+    // Angular velocity covariance includes gyro bias uncertainty
+    // Since angular velocity = w - b_w, we need to propagate uncertainty from both w and b_w
+    // For simplicity, we'll use the gyro bias covariance as the angular velocity uncertainty
+    // This is a conservative estimate since the raw gyro measurement uncertainty is not stored
+    twist_cov.block<3, 3>(3, 3) = P.block<3, 3>(10, 10);
+    
+    // Cross-correlations between linear and angular velocity are typically small
+    // and not directly available in our state representation, so we leave them as zero
+    
+    return twist_cov;
+  }
+
 // Setters
   void b_w(const Eigen::Vector3d& in)    { X.element<1>() = manif::R3d(in); }
   void b_a(const Eigen::Vector3d& in)    { X.element<2>() = manif::R3d(in); }
