@@ -22,11 +22,13 @@
 struct EIGEN_ALIGN16 PointT {
   PCL_ADD_POINT4D;
   float intensity;
+  std::uint8_t tag;    // (Livox) point tag
+  std::uint8_t line;   // (Livox) laser line id
   union {
     std::uint32_t t;   // (Ouster) time since beginning of scan in nanoseconds
     float time;        // (Velodyne) time since beginning of scan in seconds
     double timestamp;  // (Hesai) absolute timestamp in seconds
-                       // (Livox) absolute timestamp in (seconds * 10e9)
+                       // (Livox) relative timestamp in seconds
   };
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
@@ -36,6 +38,8 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(PointT,
   (float, y, y)
   (float, z, z)
   (float, intensity, intensity)
+  (std::uint8_t, tag, tag)
+  (std::uint8_t, line, line)
   (std::uint32_t, t, t)
   (float, time, time)
   (double, timestamp, timestamp)
@@ -63,7 +67,7 @@ PointTime point_time_func() {
     return [] (const PointT& p, const double& sweep_time) { return p.timestamp; };
 
   } else if (cfg.sensors.lidar.type == 3) { // LIVOX
-    return [] (const PointT& p, const double& sweep_time) { return sweep_time + p.timestamp * 1e-9f; };
+    return [] (const PointT& p, const double& sweep_time) { return sweep_time + p.timestamp; };
 
   } else {
     std::cout << "-------------------------------------------\n";
