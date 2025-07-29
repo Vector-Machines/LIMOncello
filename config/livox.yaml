@@ -7,16 +7,16 @@ limoncello:
         imu: /livox/imu
         stop_ioctree_update: /limoncello/stop_update
       output:
-        state: state  
-        frame: full_pcl
+        state: /limoncello/odom  
+        frame: /limoncello/full_pcl
 
     frames:
       # output frames (the transform between frames will be broadcasted)
       world: odom
       body: base_link
-      tf_pub: false
+      tf_pub: true
 
-    verbose: true   # print performance board
+    verbose: false   # print performance board
     debug: true    # fill useful intermediate pcl (deskewed, processed ...) 
                   # for visualizing purposes
 
@@ -32,7 +32,7 @@ limoncello:
         gravity: true     # estimate gravity vector
         accel: true       # estimate lin. accel. bias
         gyro: true        # estimate ang. vel. bias
-        time: 5.0         # time to estimate (during this time, the 
+        time: 10.0         # time to estimate (during this time, the 
                           # robot must be at stand still)
 
       time_offset: true # whether to take into account a possible sync offset
