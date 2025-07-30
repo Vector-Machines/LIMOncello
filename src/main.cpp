@@ -302,8 +302,7 @@ PROFC_NODE("LiDAR Callback")
     pcl::transformPointCloud(*processed, *processed, T);
 
     // Publish
-    pub_state->publish(toROS(state_));
-    pub_frame->publish(toROS(global));
+    pub_frame->publish(toROS(processed));
 
     if (cfg.debug) {
       pub_raw->publish(toROS(raw));
