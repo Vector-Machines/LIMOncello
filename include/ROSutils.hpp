@@ -100,7 +100,7 @@ nav_msgs::msg::Odometry toROS(State& state) {
 
   out.header.frame_id = cfg.frames.world;
   out.child_frame_id = cfg.frames.body;
-  out.header.stamp = rclcpp::Clock(RCL_ROS_TIME).now();
+  out.header.stamp = rclcpp::Time(static_cast<int64_t>(state.stamp * 1e9));
 
   return out;
 }
@@ -120,7 +120,7 @@ geometry_msgs::msg::TransformStamped toTF(State& state) {
   tf_msg.transform.rotation.z = state.quat().z();
   tf_msg.transform.rotation.w = state.quat().w();
  
-  tf_msg.header.stamp = rclcpp::Clock(RCL_ROS_TIME).now();
+  tf_msg.header.stamp = rclcpp::Time(static_cast<int64_t>(state.stamp * 1e9));
   tf_msg.header.frame_id = cfg.frames.world;
   tf_msg.child_frame_id = cfg.frames.body;
 
