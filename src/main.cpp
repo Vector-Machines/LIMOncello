@@ -133,8 +133,10 @@ public:
 
     Imu imu = fromROS(msg);
 
-    if (first_imu_stamp_ < 0.)
+    if (first_imu_stamp_ < 0.) {
       first_imu_stamp_ = imu.stamp;
+      prev_imu_ = imu; // Initialize prev_imu_ with the first valid message
+    }
     
     if (not imu_calibrated_) {
       static int N(0);
@@ -169,16 +171,20 @@ public:
       double dt = imu.stamp - prev_imu_.stamp;
 
       if (dt < 0) {
-        RCLCPP_ERROR(get_logger(), "IMU timestamps not correct");
+        RCLCPP_ERROR(get_logger(), "IMU timestamps not correct (dt=%.6fs). Current: %.6f, Previous: %.6f", 
+                     dt, imu.stamp, prev_imu_.stamp);
+        return;
       }
 
-      dt = (dt < 0 or dt >= imu.stamp) ? 1./cfg.sensors.imu.hz : dt;
+      // If time gap is too large (e.g., messages dropped), use nominal rate
+      if (dt > 0.1) { // 10Hz threshold
+        dt = 1.0 / cfg.sensors.imu.hz;
+      }
 
       imu = imu2baselink(imu, dt);
 
       // Correct acceleration
       imu.lin_accel = cfg.sensors.intrinsics.sm * imu.lin_accel;
-      prev_imu_ = imu;
 
       mtx_state_.lock();
         state_.predict(imu, dt);
@@ -196,6 +202,9 @@ public:
         tf_broadcaster_->sendTransform(toTF(state_));
       }
     }
+
+    // Always update prev_imu_ with the current message for the next callback
+    prev_imu_ = imu;
   }
 
 
