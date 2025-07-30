@@ -170,10 +170,19 @@ public:
     } else {
       double dt = imu.stamp - prev_imu_.stamp;
 
+      // Handle timestamp issues gracefully
       if (dt < 0) {
-        RCLCPP_ERROR(get_logger(), "IMU timestamps not correct (dt=%.6fs). Current: %.6f, Previous: %.6f", 
-                     dt, imu.stamp, prev_imu_.stamp);
-        return;
+        // Allow small negative dt (up to 1ms) for minor timestamp discrepancies
+        if (dt > -0.001) {
+          RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, 
+                               "Small timestamp discrepancy detected (dt=%.6fs), continuing with nominal rate", dt);
+          dt = 1.0 / cfg.sensors.imu.hz;
+        } else {
+          RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, 
+                               "Large timestamp jump detected (dt=%.6fs). Current: %.6f, Previous: %.6f, using nominal rate", 
+                               dt, imu.stamp, prev_imu_.stamp);
+          dt = 1.0 / cfg.sensors.imu.hz;
+        }
       }
 
       // If time gap is too large (e.g., messages dropped), use nominal rate
