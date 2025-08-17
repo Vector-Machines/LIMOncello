@@ -114,6 +114,8 @@ PROFC_NODE("filter")
     std::back_inserter(out->points), 
     [&](const PointT& p) mutable {
         bool pass = true;
+        Eigen::Vector3f p_; 
+        p_ = cfg.sensors.extrinsics.lidar2baselink_T.cast<float>() * p.getVector3fMap();
 
         // Crop box filter
         if (cfg.filters.crop_box.active)
@@ -141,7 +143,7 @@ PROFC_NODE("filter")
 
         // Field of view filter
         if (pass and cfg.filters.fov.active) {
-          if (fabs(atan2(p.y, p.x)) >= cfg.filters.fov.value)
+          if (fabs(atan2(p_.y(), p_.x())) >= cfg.filters.fov.value)
               pass = false;
         }
 
