@@ -37,11 +37,19 @@ set(BUILD_TESTING OFF CACHE BOOL "Disable testing for manif library" FORCE)
 # External libraries
 add_subdirectory(external/manif)
 
+# Configure and add small_gicp (header-only usage)
+set(BUILD_HELPER OFF CACHE BOOL "Disable small_gicp helper library" FORCE)
+set(BUILD_WITH_TBB ON CACHE BOOL "Enable TBB for small_gicp" FORCE)
+set(BUILD_WITH_OPENMP OFF CACHE BOOL "Disable OpenMP for small_gicp" FORCE)
+set(BUILD_WITH_PCL ON CACHE BOOL "Enable PCL for small_gicp" FORCE)
+add_subdirectory(external/small_gicp)
+
 # Main executable
 add_executable(${PROJECT_NAME} src/main.cpp)
 
 target_include_directories(${PROJECT_NAME} PRIVATE
   include
+  external/small_gicp/include
   ${PCL_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIR}
 )
