@@ -18,7 +18,9 @@
 #include <small_gicp/pcl/pcl_point_traits.hpp>
 #include <small_gicp/registration/registration.hpp>
 #include <small_gicp/registration/reduction_tbb.hpp>
+#include <small_gicp/registration/registration_helper.hpp>
 #include <small_gicp/factors/gicp_factor.hpp>
+#include <small_gicp/points/point_cloud.hpp>
 
 #include "Core/State.hpp"
 #include "Core/Cloud.hpp"
@@ -45,6 +47,8 @@ class Manager : public rclcpp::Node
 
   small_gicp::GaussianVoxelMap::Ptr vgicp_map_;
   bool stop_map_update_;
+  int failed_registration_count_;
+  static constexpr int max_failed_map_updates_ = 3;  // Allow map updates for first 3 failed registrations
 
   // ROS
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr lidar_sub_;
@@ -64,6 +68,63 @@ class Manager : public rclcpp::Node
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_downsampled;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_to_match;
 
+private:
+  small_gicp::RegistrationResult register_and_update_map(const pcl::PointCloud<pcl::PointCovariance>::Ptr &source_cloud, const Eigen::Isometry3d &initial_guess)
+  {
+    Config &cfg = Config::getInstance();
+
+    if (source_cloud->empty()) {
+      RCLCPP_WARN(get_logger(), "Cannot register an empty source cloud.");
+      return small_gicp::RegistrationResult();
+    }
+
+    // Setup registration (covariances are already computed in preprocessing)
+    small_gicp::Registration<small_gicp::GICPFactor, small_gicp::ParallelReductionTBB> registration;
+    registration.rejector.max_dist_sq = cfg.gicp.max_correspondence_distance * cfg.gicp.max_correspondence_distance;
+    registration.optimizer.max_iterations = cfg.gicp.max_iterations;
+    registration.criteria.rotation_eps = cfg.gicp.rotation_epsilon;
+    registration.criteria.translation_eps = cfg.gicp.translation_epsilon;
+
+    // 3. Perform registration (will fail gracefully if map is empty or insufficient)
+    if (cfg.verbose) {
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
+                           "Registering source cloud with %zu points against map with %zu voxels",
+                           source_cloud->size(), vgicp_map_->size());
+    }
+    
+    auto result = registration.align(*vgicp_map_, *source_cloud, *vgicp_map_, initial_guess);
+
+    // 4. Smart map update strategy
+    if (!stop_map_update_)
+    {
+      if (result.converged)
+      {
+        // Registration succeeded - use corrected pose and reset failure counter
+        vgicp_map_->insert(*source_cloud, result.T_target_source);
+        failed_registration_count_ = 0;  // Reset counter on successful registration
+      }
+      else
+      {
+        // Registration failed - only update map for first few failures to bootstrap
+        if (failed_registration_count_ < max_failed_map_updates_)
+        {
+          vgicp_map_->insert(*source_cloud, initial_guess);
+          failed_registration_count_++;
+          RCLCPP_INFO(get_logger(), "Map updated with odometry pose (failed registration %d/%d)", 
+                     failed_registration_count_, max_failed_map_updates_);
+        }
+        else
+        {
+          RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                               "Skipping map update - too many failed registrations (%d)", 
+                               failed_registration_count_);
+        }
+      }
+    }
+
+    return result;
+  }
+
 public:
   Manager() : Node("limoncello",
                    rclcpp::NodeOptions()
@@ -71,7 +132,8 @@ public:
                        .automatically_declare_parameters_from_overrides(true)),
               first_imu_stamp_(-1.0),
               state_buffer_(1000),
-              stop_map_update_(false)
+              stop_map_update_(false),
+              failed_registration_count_(0)
   {
 
     Config &cfg = Config::getInstance();
@@ -297,123 +359,90 @@ public:
     mtx_state_.lock();
 
     PointCloudT::Ptr deskewed = deskew(raw, state_, interpolated, offset, sweep_time);
-    PointCloudT::Ptr downsampled = voxel_grid(deskewed);
-    PointCloudT::Ptr processed = process(downsampled);
+    PointCloudT::Ptr filtered = process(deskewed);
 
-    if (processed->points.empty())
+    if (filtered->points.empty())
     {
-      RCLCPP_ERROR(get_logger(), "[LIMONCELLO] Processed & downsampled cloud is empty!");
+      RCLCPP_WARN(get_logger(), "[LIMONCELLO] Filtered cloud is empty!");
+      mtx_state_.unlock();
       return;
     }
 
-    // VGICP Registration with small_gicp
-    if (vgicp_map_->size() > 0)
+    // Downsample and compute covariances in one step for registration
+    auto processed = voxel_grid_with_covariances(filtered);
+
+    if (cfg.verbose) {
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
+                           "Point cloud sizes - Raw: %zu, Deskewed: %zu, Filtered: %zu, Processed: %zu",
+                           raw->size(), deskewed->size(), filtered->size(), processed->size());
+    }
+
+    if (processed->points.empty())
     {
-      // Convert PointT to pcl::PointXYZ for compatibility with small_gicp
-      pcl::PointCloud<pcl::PointXYZ>::Ptr xyz_cloud(new pcl::PointCloud<pcl::PointXYZ>());
-      xyz_cloud->reserve(processed->size());
-      for (const auto &pt : processed->points)
-      {
-        pcl::PointXYZ xyz_pt;
-        xyz_pt.x = pt.x;
-        xyz_pt.y = pt.y;
-        xyz_pt.z = pt.z;
-        xyz_cloud->push_back(xyz_pt);
-      }
+      RCLCPP_WARN(get_logger(), "[LIMONCELLO] Processed cloud is empty after filtering and downsampling!");
+      mtx_state_.unlock();
+      return;
+    }
 
-      // Source Cloud Preprocessing: downsample and convert to pcl::PointCovariance
-      auto source_cloud = small_gicp::voxelgrid_sampling_tbb<pcl::PointCloud<pcl::PointXYZ>, pcl::PointCloud<pcl::PointCovariance>>(*xyz_cloud, cfg.filters.voxel_grid.leaf_size);
-      // Note: estimate_covariances_tbb modifies the cloud in place
-      small_gicp::estimate_covariances_tbb(*source_cloud, cfg.ikfom.plane.points);
+    // VGICP Registration with small_gicp - simplified unified approach
+    // Get initial guess from current state
+    Eigen::Affine3d affine_guess = state_.affine3d() * state_.I2L_affine3d();
+    Eigen::Isometry3d initial_guess;
+    initial_guess.linear() = affine_guess.linear();
+    initial_guess.translation() = affine_guess.translation();
 
-      // Registration setup
-      small_gicp::Registration<small_gicp::GICPFactor, small_gicp::ParallelReductionTBB> registration;
+    // Use helper function for registration and map update
+    auto result = register_and_update_map(processed, initial_guess);
 
-      // Set registration parameters
-      registration.rejector.max_dist_sq = 1.0 * 1.0; // max_correspondence_distance squared
-      registration.optimizer.max_iterations = 20;
-      registration.criteria.rotation_eps = 0.1 * M_PI / 180.0;
-      registration.criteria.translation_eps = 0.01;
+    if (result.converged)
+    {
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "VGICP converged with %zu iterations, error: %.6f",
+                           result.iterations, result.error);
 
-      // Get initial guess from current state
-      Eigen::Affine3d affine_guess = state_.affine3d() * state_.I2L_affine3d();
-      Eigen::Isometry3d initial_guess;
-      initial_guess.linear() = affine_guess.linear();
-      initial_guess.translation() = affine_guess.translation();
-
-      // Perform registration
-      auto result = registration.align(*vgicp_map_, *source_cloud, *vgicp_map_, initial_guess);
-
-      if (result.converged)
-      {
-        RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
-                             "VGICP converged with %zu iterations, error: %.6f",
-                             result.iterations, result.error);
-
-        // State Update: Pass registration result to updated state_.update() method
-        state_.update(result);
-
-        // Map Update: Insert the source cloud into the map using corrected pose
-        if (!stop_map_update_)
-        {
-          vgicp_map_->insert(*source_cloud, result.T_target_source);
-        }
-      }
-      else
-      {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
-                             "VGICP failed to converge after %zu iterations", result.iterations);
-      }
+      // State Update: Pass registration result to updated state_.update() method
+      state_.update(result);
     }
     else
     {
-      // Convert PointT to pcl::PointXYZ for compatibility with small_gicp
-      pcl::PointCloud<pcl::PointXYZ>::Ptr xyz_cloud(new pcl::PointCloud<pcl::PointXYZ>());
-      xyz_cloud->reserve(processed->size());
-      for (const auto &pt : processed->points)
-      {
-        pcl::PointXYZ xyz_pt;
-        xyz_pt.x = pt.x;
-        xyz_pt.y = pt.y;
-        xyz_pt.z = pt.z;
-        xyz_cloud->push_back(xyz_pt);
-      }
-
-      // First scan - initialize the map: downsample and convert to pcl::PointCovariance
-      auto source_cloud = small_gicp::voxelgrid_sampling_tbb<pcl::PointCloud<pcl::PointXYZ>, pcl::PointCloud<pcl::PointCovariance>>(*xyz_cloud, cfg.filters.voxel_grid.leaf_size);
-      // Note: estimate_covariances_tbb modifies the cloud in place
-      small_gicp::estimate_covariances_tbb(*source_cloud, cfg.ikfom.plane.points);
-
-      Eigen::Affine3d affine_pose = state_.affine3d() * state_.I2L_affine3d();
-      Eigen::Isometry3d current_pose;
-      current_pose.linear() = affine_pose.linear();
-      current_pose.translation() = affine_pose.translation();
-      vgicp_map_->insert(*source_cloud, current_pose);
-      RCLCPP_INFO(get_logger(), "Initialized VGICP map with first scan");
+      // Registration failed - limited map updates to prevent corruption
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "VGICP failed to converge after %zu iterations, continuing with odometry",
+                           result.iterations);
     }
 
     Eigen::Affine3f T = (state_.affine3d() * state_.I2L_affine3d()).cast<float>();
 
     mtx_state_.unlock();
 
+    // Convert processed cloud back to regular PointCloudT for publishing
+    PointCloudT::Ptr processed_regular(new PointCloudT);
+    processed_regular->points.resize(processed->size());
+    for (size_t i = 0; i < processed->size(); ++i) {
+      processed_regular->points[i].getVector4fMap() = processed->points[i].getVector4fMap();
+    }
+
     PointCloudT::Ptr global(new PointCloudT);
     deskewed->width = static_cast<uint32_t>(deskewed->points.size());
     deskewed->height = 1;
     pcl::transformPointCloud(*deskewed, *global, T);
 
-    processed->height = 1;
-    processed->width = static_cast<uint32_t>(processed->points.size());
-    pcl::transformPointCloud(*processed, *processed, T);
+    processed_regular->height = 1;
+    processed_regular->width = static_cast<uint32_t>(processed_regular->points.size());
+    pcl::transformPointCloud(*processed_regular, *processed_regular, T);
 
     // Publish
-    pub_frame->publish(toROS(processed));
+    pub_frame->publish(toROS(processed_regular));
 
     if (cfg.debug)
     {
+      // Create downsampled cloud for debug publishing
+      PointCloudT::Ptr downsampled = voxel_grid(deskewed);
+      
       pub_raw->publish(toROS(raw));
       pub_deskewed->publish(toROS(deskewed));
       pub_downsampled->publish(toROS(downsampled));
-      pub_to_match->publish(toROS(processed));
+      pub_to_match->publish(toROS(processed_regular));
     }
 
     // Note: Map update is now handled within the registration logic above

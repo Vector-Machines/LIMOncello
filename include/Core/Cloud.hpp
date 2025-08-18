@@ -5,6 +5,9 @@
 #include <execution>
 
 #include <boost/circular_buffer.hpp>
+#include <small_gicp/util/downsampling_tbb.hpp>
+#include <small_gicp/util/normal_estimation_tbb.hpp>
+#include <small_gicp/pcl/pcl_point.hpp>
 
 #include "Core/State.hpp"
 #include "Utils/PCL.hpp"
@@ -163,14 +166,23 @@ PROFC_NODE("downsample")
 
   Config& cfg = Config::getInstance();
 
-  static pcl::VoxelGrid<PointT> filter;
-  filter.setLeafSize(cfg.filters.voxel_grid.leaf_size, 
-                     cfg.filters.voxel_grid.leaf_size, 
-                     cfg.filters.voxel_grid.leaf_size);
+  // small_gicp can directly work with PCL point clouds, including preserving intensity
+  return small_gicp::voxelgrid_sampling_tbb(*cloud, cfg.filters.voxel_grid.leaf_size);
+}
 
-  PointCloudT::Ptr out(new PointCloudT);
-  filter.setInputCloud(cloud);
-  filter.filter(*out);
 
-  return out;
+pcl::PointCloud<pcl::PointCovariance>::Ptr voxel_grid_with_covariances(const PointCloudT::Ptr& cloud) {
+
+PROFC_NODE("downsample_with_covariances")
+
+  Config& cfg = Config::getInstance();
+
+  // Downsample and convert to PointCovariance in one step
+  auto downsampled = small_gicp::voxelgrid_sampling_tbb<PointCloudT, pcl::PointCloud<pcl::PointCovariance>>(
+      *cloud, cfg.filters.voxel_grid.leaf_size);
+  
+  // Estimate covariances immediately after downsampling
+  small_gicp::estimate_covariances_tbb(*downsampled, cfg.gicp.covariance.num_neighbors);
+
+  return downsampled;
 }

@@ -243,6 +243,13 @@ void fill_config(Config& cfg, rclcpp::Node* n) {
   n->get_parameter("filters.rate_sampling.active", cfg.filters.rate_sampling.active);
   n->get_parameter("filters.rate_sampling.value",  cfg.filters.rate_sampling.value);
 
+  // GICP
+  n->get_parameter("gicp.max_correspondence_distance", cfg.gicp.max_correspondence_distance);
+  n->get_parameter("gicp.max_iterations",              cfg.gicp.max_iterations);
+  n->get_parameter("gicp.rotation_epsilon",            cfg.gicp.rotation_epsilon);
+  n->get_parameter("gicp.translation_epsilon",         cfg.gicp.translation_epsilon);
+  n->get_parameter("gicp.covariance.num_neighbors",    cfg.gicp.covariance.num_neighbors);
+
   // IKFoM
   n->get_parameter("IKFoM.query_iters",         cfg.ikfom.query_iters);
   n->get_parameter("IKFoM.max_iters",           cfg.ikfom.max_iters);
@@ -252,9 +259,6 @@ void fill_config(Config& cfg, rclcpp::Node* n) {
   n->get_parameter("IKFoM.covariance.accel",      cfg.ikfom.covariance.accel);
   n->get_parameter("IKFoM.covariance.bias_gyro",  cfg.ikfom.covariance.bias_gyro);
   n->get_parameter("IKFoM.covariance.bias_accel", cfg.ikfom.covariance.bias_accel);
-  n->get_parameter("IKFoM.plane.points",          cfg.ikfom.plane.points);
-  n->get_parameter("IKFoM.plane.max_sqrt_dist",   cfg.ikfom.plane.max_sqrt_dist);
-  n->get_parameter("IKFoM.plane.plane_threshold", cfg.ikfom.plane.plane_threshold);
 }
 
 

@@ -99,6 +99,17 @@ struct Config {
 
   } filters;
 
+  struct GICP {
+    double max_correspondence_distance;
+    int max_iterations;
+    double rotation_epsilon;
+    double translation_epsilon;
+    
+    struct {
+      int num_neighbors;
+    } covariance;
+  } gicp;
+
   struct IKFoM {
   	int query_iters;
   	int max_iters;
@@ -111,12 +122,6 @@ struct Config {
   		float bias_gyro;
   		float bias_accel;
   	} covariance;
-
-  	struct {
-  		int points;
-  		float max_sqrt_dist;
-  		float plane_threshold;
-  	} plane;
   } ikfom;
 
   static Config& getInstance() {

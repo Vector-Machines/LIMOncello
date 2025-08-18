@@ -81,6 +81,14 @@ limoncello:
         active: false
         value: 4
 
+    gicp:
+      max_correspondence_distance: 1.0    # [m] Maximum correspondence distance
+      max_iterations: 20                  # Maximum optimizer iterations
+      rotation_epsilon: 0.01              # [rad] M_PI / 180.0 * 0.1
+      translation_epsilon: 0.1            # [m]
+      covariance:
+        num_neighbors: 20                 # Number of neighbors for covariance estimation
+
     IKFoM:                               # Iterative Kalman Filter on Manifolds lib
       query_iters: 3                     # number of iterations doing KNN from max iterations 
       max_iters: 3                       # max num of iterations of the IESEKF
@@ -92,9 +100,3 @@ limoncello:
         accel: 0.1                       # [rad^2]
         bias_gyro: 0.001                 # [m^2/s^2 * sqrt(s)]
         bias_accel: 0.01                 # [rad/s * sqrt(s)]
-      
-      plane:                             # plane features for point to plane ICP
-        points: 5                        # num of points that constitute a plane
-        max_sqrt_dist: 2.0               # [m] if a neighor exceeds is too far the plane is not valid
-        plane_threshold: 0.05            # [m] max distance from point to plane to be 
-                                         # considered a valid plane
