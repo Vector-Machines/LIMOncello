@@ -72,7 +72,7 @@ struct Config {
 
   struct Filters {
     struct {
-    	Eigen::Vector4d leaf_size;
+    	double leaf_size;
     } voxel_grid;
 
     struct {
@@ -118,12 +118,6 @@ struct Config {
   		float plane_threshold;
   	} plane;
   } ikfom;
-
-  struct iOctree {
-    float min_extent;
-    int bucket_size;
-    bool downsample;
-  } ioctree;
 
   static Config& getInstance() {
     static Config* config = new Config();

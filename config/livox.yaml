@@ -62,7 +62,7 @@ limoncello:
       
     filters:
       voxel_grid:
-        leaf_size: [0.1, 0.1, 0.1]
+        leaf_size: 0.1                    # Single voxel size for both filtering and mapping
 
       min_distance:                       # sphere crop
         active: true
@@ -98,8 +98,3 @@ limoncello:
         max_sqrt_dist: 2.0               # [m] if a neighor exceeds is too far the plane is not valid
         plane_threshold: 0.05            # [m] max distance from point to plane to be 
                                          # considered a valid plane
-        
-    iOctree:
-      min_extent: 0.1                    # Minimum cell size
-      bucket_size: 5                     # Maximum points per octree leaf
-      downsample: true                   # Downsample when inserting into the octree

@@ -222,9 +222,7 @@ void fill_config(Config& cfg, rclcpp::Node* n) {
 
   // FILTERS
   {
-    std::vector<double> tmp;
-    n->get_parameter("filters.voxel_grid.leaf_size", tmp);
-    cfg.filters.voxel_grid.leaf_size = Eigen::Vector4d(tmp[0], tmp[1], tmp[2], 1.);
+    n->get_parameter("filters.voxel_grid.leaf_size", cfg.filters.voxel_grid.leaf_size);
 
     n->get_parameter_or("filters.crop_box.active", cfg.filters.crop_box.active, false);
     std::vector<double> min_pt_tmp;
@@ -257,11 +255,6 @@ void fill_config(Config& cfg, rclcpp::Node* n) {
   n->get_parameter("IKFoM.plane.points",          cfg.ikfom.plane.points);
   n->get_parameter("IKFoM.plane.max_sqrt_dist",   cfg.ikfom.plane.max_sqrt_dist);
   n->get_parameter("IKFoM.plane.plane_threshold", cfg.ikfom.plane.plane_threshold);
-
-  // iOctree
-  n->get_parameter("iOctree.downsample",  cfg.ioctree.downsample);
-  n->get_parameter("iOctree.bucket_size", cfg.ioctree.bucket_size);
-  n->get_parameter("iOctree.min_extent",  cfg.ioctree.min_extent);
 }
 
 

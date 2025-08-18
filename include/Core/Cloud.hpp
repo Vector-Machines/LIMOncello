@@ -164,7 +164,9 @@ PROFC_NODE("downsample")
   Config& cfg = Config::getInstance();
 
   static pcl::VoxelGrid<PointT> filter;
-  filter.setLeafSize(cfg.filters.voxel_grid.leaf_size.cast<float>());
+  filter.setLeafSize(cfg.filters.voxel_grid.leaf_size, 
+                     cfg.filters.voxel_grid.leaf_size, 
+                     cfg.filters.voxel_grid.leaf_size);
 
   PointCloudT::Ptr out(new PointCloudT);
   filter.setInputCloud(cloud);
