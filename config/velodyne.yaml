@@ -9,8 +9,8 @@ topics:
   frame_id: global
 
 
-verbose: true   # print debug/performance board
-debug: false     # fill useful intermediate pcl (deskewed, processed ...) 
+verbose: true   # print performance board
+debug: false    # fill useful intermediate pcl (deskewed, processed ...) 
                 # for visualizing purposes
 
 sensors:
@@ -25,7 +25,7 @@ sensors:
     gravity: true           # estimate gravity vector
     accel: true             # estimate lin. accel. bias
     gyro: true              # estimate ang. vel. bias
-    time: 2.5               # time to estimate (during this time, the 
+    time: 3.               # time to estimate (during this time, the 
                            # robot must be at stand still)
 
   time_offset: true # whether to take into account a possible sync offset
@@ -34,14 +34,23 @@ sensors:
 
   extrinsics:
     imu2baselink:
-      t: [0.0, 0.0, 0.0 ]  # (x, y, z) [meters]
-      R: [0., 0., 0.]        # roll, pitch, yaw [deg]
+      t: [0., 0., 0.1] # (x, y, z) [meters]
+      R: [0., 0., 0.]  # roll, pitch, yaw [deg]
 
-    lidar2baselink:
-      t: [1.10, 0.0, 0.05] # (x, y, z) [meters]
-      R: [0.0, -0.0520403, 0.0]   # roll, pitch, yaw [deg]
+    imu2CoG:
+      t: [0., 0., 0.] # (x, y, z) [meters]
+      R: [0., 0., 0.]  # roll, pitch, yaw [deg]
+
+    lidar2imu:
+      t: [1.10, 0.0, 0.0] # (x, y, z) [meters]
+      R: [0.0, -3.5, 0.0] # roll, pitch, yaw [deg]
+
+      # Extrinsics between the LiDAR and the IMU can be estimated
+      # but an initial guess needs to be supplied. Acceleration are
+      # corrected with imu2CoG extrinsics, and for visualization point
+      # clouds are published w.r.t imu2baselink*lidar2imu frame.
+    
     gravity: 9.80304
-
 
   intrinsics:
     accel_bias: [ 0.0001, 0.0001, 0.0001 ]  # [m/s^2]
@@ -60,7 +69,6 @@ sensors:
     #   | 
     #   |
     # Z-yaw o-----------> X-roll
-
   
 filters:
   voxel_grid:
@@ -69,6 +77,11 @@ filters:
   min_distance: # sphere crop
     active: true
     value: 1.5  # [m]
+
+  crop_box: # w.r.t baselink frame 
+    active: false 
+    min: [0., 0., 0.] # [m] (x, y, z)
+    max: [0., 0., 0.] # [m] (x, y, z)
 
   fov: # crop field of view
     active: true
@@ -84,19 +97,21 @@ IKFoM:  # Iterative Kalman Filter on Manifolds lib
   max_iters: 4  # max num of iterations of the IESEKF
   tolerance: 0.0001                      
   lidar_noise: 0.0005
+  estimate_extrinsics: false
 
   covariance:
-    gyro: 6.01e-4        # [m^2/s^2]
+    gyro: 6.01e-4        # [m/s^2]
     accel: 1.53e-2       # [rad^2]
     bias_gyro: 1.54e-5   # [m^2/s^2 * sqrt(s)]
     bias_accel: 3.38e-4  # [rad/s * sqrt(s)]
+    initial_cov: 0.001     # Initial covariance for every element in the state
+                         # i.e., P = I * initial_cov 
   
   plane:                     # plane features for point to plane ICP
-    points: 12                # num of points that constitute a plane
-    max_sqrt_dist: 1       # [m] if a neighor exceeds is too far the plane is not valid
-    plane_threshold: 0.1  # [m] max distance from point to plane to be 
+    points: 5                # num of points that constitute a plane
+    max_sqrt_dist: 2         # [m] if a neighor exceeds is too far the plane is not valid
+    plane_threshold: 0.05    # [m] max distance from point to plane to be 
                              # considered a valid plane 
-    
 
 iOctree:
   min_extent: 0.2

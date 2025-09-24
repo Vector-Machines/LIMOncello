@@ -38,7 +38,7 @@ sensors:
       R: [0., -8.25, 91.25]       # roll, pitch, yaw [deg]
       #R: [0., 0., 0.]
 
-    lidar2baselink:
+    lidar2imu:
       t: [0.0, 0., 0.] # (x, y, z) [meters]
       R: [0., -8.25, 91.25]     # roll, pitch, yaw [deg]
       #R: [0., 0., 0.]

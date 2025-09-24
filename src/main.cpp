@@ -42,14 +42,15 @@ class Manager {
                  pub_raw_, 
                  pub_deskewed_, 
                  pub_downsampled_, 
-                 pub_to_match_;
+                 pub_filtered_;
 
+  tf2_ros::TransformBroadcaster br;
   
 public:
   Manager(ros::NodeHandle& nh) : first_imu_stamp_(-1.0), 
-                                       state_buffer_(1000), 
-                                       stop_ioctree_update_(false),
-                                       ioctree_() {
+                                 state_buffer_(1000), 
+                                 stop_ioctree_update_(false),
+                                 ioctree_() {
 
     Config& cfg = Config::getInstance();
 
@@ -69,7 +70,7 @@ public:
     pub_raw_         = nh.advertise<sensor_msgs::PointCloud2>("debug/raw",         10);
     pub_deskewed_    = nh.advertise<sensor_msgs::PointCloud2>("debug/deskewed",    10);
     pub_downsampled_ = nh.advertise<sensor_msgs::PointCloud2>("debug/downsampled", 10);
-    pub_to_match_    = nh.advertise<sensor_msgs::PointCloud2>("debug/to_match",    10);
+    pub_filtered_    = nh.advertise<sensor_msgs::PointCloud2>("debug/filtered",    10);
   };
   
   ~Manager() = default;
@@ -99,16 +100,18 @@ public:
         gyro_avg /= N;
         accel_avg /= N;
 
+        auto R = cfg.sensors.extrinsics.imu2CoG.linear();
+
         if (cfg.sensors.calibration.gravity) {
           grav_vec = accel_avg.normalized() * abs(cfg.sensors.extrinsics.gravity);
-          state_.g(-grav_vec);
+          state_.g(R * -grav_vec);
         }
         
         if (cfg.sensors.calibration.gyro)
-          state_.b_w(gyro_avg);
+          state_.b_w(R * gyro_avg);
 
         if (cfg.sensors.calibration.accel)
-          state_.b_a(accel_avg - grav_vec);
+          state_.b_a(R *(accel_avg - grav_vec));
 
         imu_calibrated_ = true;
       }
@@ -138,8 +141,8 @@ public:
       cv_prop_stamp_.notify_one();
 
       pub_state_.publish(toROS(state_));
+      br.sendTransform(toTF(state_));
     }
-
   }
 
 
@@ -205,21 +208,26 @@ PROFC_NODE("LiDAR Callback")
 
     PointCloudT::Ptr deskewed    = deskew(raw, state_, interpolated, offset, sweep_time);
     PointCloudT::Ptr downsampled = voxel_grid(deskewed);
-    PointCloudT::Ptr processed   = process(downsampled);
+    PointCloudT::Ptr filtered    = filter(downsampled, state_.L2baselink_isometry());
 
-    if (processed->points.empty()) {
-      ROS_ERROR("[LIMONCELLO] Processed & downsampled cloud is empty!");
+    if (filtered->points.empty()) {
+      ROS_ERROR("[LIMONCELLO] Filtered & downsampled cloud is empty!");
+      mtx_state_.unlock();
       return;
     }
 
-    state_.update(processed, ioctree_);
-    Eigen::Affine3f T = (state_.affine3d() * state_.I2L_affine3d()).cast<float>();
+    state_.update(filtered, ioctree_);
+
+    Eigen::Isometry3f T1 = (state_.isometry() * state_.L2baselink_isometry()).cast<float>();
+    Eigen::Isometry3f T2 = (state_.isometry() * state_.L2I_isometry()).cast<float>();
 
   mtx_state_.unlock();
 
     PointCloudT::Ptr global(boost::make_shared<PointCloudT>());
-    pcl::transformPointCloud(*deskewed, *global, T);
-    pcl::transformPointCloud(*processed, *processed, T);
+    pcl::transformPointCloud(*deskewed, *global, T1);
+
+    PointCloudT::Ptr to_save(boost::make_shared<PointCloudT>());
+    pcl::transformPointCloud(*filtered, *to_save, T2);
 
     // Publish
     pub_state_.publish(toROS(state_));
@@ -229,12 +237,12 @@ PROFC_NODE("LiDAR Callback")
       pub_raw_.publish(toROS(raw));
       pub_deskewed_.publish(toROS(deskewed));
       pub_downsampled_.publish(toROS(downsampled));
-      pub_to_match_.publish(toROS(processed));
+      pub_filtered_.publish(toROS(filtered));
     }
 
     // Update map
     if (not stop_ioctree_update_)
-      ioctree_.update(processed->points);
+      ioctree_.update(to_save->points);
 
     if (cfg.verbose)
       PROFC_PRINT()
@@ -257,7 +265,7 @@ int main(int argc, char** argv) {
   
   ros::init(argc, argv, "limoncello");
   ros::NodeHandle nh("~");
-  
+
   // Setup config parameters.
   Config& cfg = Config::getInstance();
   fill_config(cfg, nh); 

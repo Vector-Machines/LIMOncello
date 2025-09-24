@@ -20,8 +20,8 @@ Imu imu2baselink(const Imu& imu, const double& dt) {
   
   Config& cfg = Config::getInstance();
 
-  static Eigen::Matrix3d R = cfg.sensors.extrinsics.imu2baselink_T.linear();
-  static Eigen::Vector3d t = cfg.sensors.extrinsics.imu2baselink_T.translation();
+  static Eigen::Matrix3d R = cfg.sensors.extrinsics.imu2CoG.linear();
+  static Eigen::Vector3d t = cfg.sensors.extrinsics.imu2CoG.translation();
 
   Eigen::Vector3d ang_vel_cg = R * imu.ang_vel;
   static Eigen::Vector3d ang_vel_cg_prev = ang_vel_cg;
