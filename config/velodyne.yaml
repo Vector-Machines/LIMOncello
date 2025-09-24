@@ -9,7 +9,7 @@ topics:
   frame_id: global
 
 
-verbose: true   # print performance board
+verbose: false   # print performance board
 debug: false    # fill useful intermediate pcl (deskewed, processed ...) 
                 # for visualizing purposes
 
