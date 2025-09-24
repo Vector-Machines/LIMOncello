@@ -18,7 +18,7 @@
 
 #include <manif/manif.h>
 #include <manif/SGal3.h>
-#include <manif/SE3.h>
+#include <manif/SO3.h>
 #include <manif/Bundle.h>
 #include <manif/Rn.h>
 
@@ -27,7 +27,8 @@ struct State {
 
   using BundleT = manif::Bundle<double,
       manif::SGal3,  // position & rotation & velocity & t
-      manif::SE3,    // extrinsics
+      manif::SO3,    // extrinsics: rotation
+      manif::R3,     // extrinsics: translation
       manif::R3,     // angular bias
       manif::R3,     // acceleartion bias
       manif::R3      // gravity
@@ -60,7 +61,8 @@ struct State {
                               0., 0., 0.,                       // roll pitch yaw              6
                               0., 0., 0.,                       // vx, vy, vz                  3
                               0.),                              // delta t                     9
-                manif::SE3d(cfg.sensors.extrinsics.lidar2imu),   // lidar2imu                  13
+                manif::SO3d(Eigen::Quaterniond(cfg.sensors.extrinsics.lidar2imu.linear())),
+                manif::R3d(cfg.sensors.extrinsics.lidar2imu.translation()),   // lidar2imu                  13
                 manif::R3d(cfg.sensors.intrinsics.gyro_bias),   // b_w                        16
                 manif::R3d(cfg.sensors.intrinsics.accel_bias),  // b_a                        19
                 manif::R3d(Eigen::Vector3d::UnitZ()      
@@ -236,11 +238,9 @@ PROFC_NODE("update")
 
           // Differentiate w.r.t. SE3
           if (cfg.ikfom.estimate_extrinsics) {
-            Eigen::Matrix<double, 3, manif::SE3d::DoF> J_e;
-            manif::SE3d SR = manif::SE3d(isometry()).compose(X.element<1>());
-            SR.act(m.p, J_e);
-            
-            H.block<1, manif::SE3d::DoF>(i, manif::SGal3d::DoF) << m.n.head(3).transpose() * J_e;
+            H.block<1, 3>(i, manif::SGal3d::DoF) << m.n.head(3).transpose() * (- R() * Re() * manif::skew(m.p)) ;
+            H.block<1, 3>(i, manif::SGal3d::DoF + 3) << m.n.head(3).transpose() * R();
+
           }
 
           z(i) = -dist2plane(m.n, g);
@@ -297,12 +297,16 @@ PROFC_NODE("update")
 // Getters
   inline Eigen::Vector3d p()       const { return X.element<0>().translation();             }
   inline Eigen::Matrix3d R()       const { return X.element<0>().quat().toRotationMatrix(); }
+  inline Eigen::Matrix3d Re()       const { return X.element<1>().quat().toRotationMatrix(); }
+  inline Eigen::Vector3d pe()       const { return X.element<2>().coeffs(); }
+
+
   inline Eigen::Quaterniond quat() const { return X.element<0>().quat();                    }
   inline Eigen::Vector3d v()       const { return X.element<0>().linearVelocity();          }
   inline double t()                const { return X.element<0>().t();                       }
-  inline Eigen::Vector3d b_w()     const { return X.element<2>().coeffs();                  }
-  inline Eigen::Vector3d b_a()     const { return X.element<3>().coeffs();                  }
-  inline Eigen::Vector3d g()       const { return X.element<4>().coeffs();                  }
+  inline Eigen::Vector3d b_w()     const { return X.element<3>().coeffs();                  }
+  inline Eigen::Vector3d b_a()     const { return X.element<4>().coeffs();                  }
+  inline Eigen::Vector3d g()       const { return X.element<5>().coeffs();                  }
 
 
   inline Eigen::Isometry3d isometry() const {
@@ -313,7 +317,10 @@ PROFC_NODE("update")
   }
 
   inline Eigen::Isometry3d L2I_isometry() const {
-    return X.element<1>().isometry();
+    Eigen::Isometry3d T;
+    T.linear() = Re();
+    T.translation() = pe();
+    return T;
   }
 
   inline Eigen::Isometry3d L2baselink_isometry() const {
@@ -321,9 +328,9 @@ PROFC_NODE("update")
   }
 
 // Setters
-  void b_w(const Eigen::Vector3d& in) { X.element<2>() = manif::R3d(in); }
-  void b_a(const Eigen::Vector3d& in) { X.element<3>() = manif::R3d(in); }
-  void g(const Eigen::Vector3d& in)   { X.element<4>() = manif::R3d(in); }
+  void b_w(const Eigen::Vector3d& in) { X.element<3>() = manif::R3d(in); }
+  void b_a(const Eigen::Vector3d& in) { X.element<4>() = manif::R3d(in); }
+  void g(const Eigen::Vector3d& in)   { X.element<5>() = manif::R3d(in); }
 
 };
 
