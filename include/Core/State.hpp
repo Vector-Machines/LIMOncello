@@ -307,7 +307,8 @@ PROFC_NODE("update")
       dx_vec.tail(2) = S2::Log(X.element<4>().coeffs(), 
                                X_predicted.element<4>().coeffs());
 
-      // std::cout << "dx_vec: " << dx_vec.transpose() << std::endl;
+      std::cout << "dx S2: " << S2::Log(X.element<4>().coeffs(), 
+                               X_predicted.element<4>().coeffs()).transpose() << std::endl;
 
       Eigen::Matrix<double, DoFObs, DoFObs> HTH = H.transpose() * H / R;
       MatrixDoF P_inv = P.inverse();
