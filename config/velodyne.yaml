@@ -97,7 +97,7 @@ IKFoM:  # Iterative Kalman Filter on Manifolds lib
   max_iters: 4  # max num of iterations of the IESEKF
   tolerance: 0.0001                      
   lidar_noise: 0.0005
-  estimate_extrinsics: true
+  estimate_extrinsics: false
 
   covariance:
     gyro: 6.01e-4        # [m/s^2]

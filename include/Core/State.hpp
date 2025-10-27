@@ -11,6 +11,7 @@
 #include "Core/Imu.hpp"
 #include "Core/Plane.hpp"
 #include "Core/Octree.hpp"
+#include <Core/S2.hpp>
 
 #include "Utils/Config.hpp"
 #include "Utils/PCL.hpp"
@@ -35,18 +36,20 @@ struct State {
 
   using Tangent = typename BundleT::Tangent; 
 
-  static constexpr int DoF = BundleT::DoF;                             // DoF whole state
-  static constexpr int DoFNoise = 4*3;                                 // b_w, b_a, n_{b_w}, n_{b_a}
-  static constexpr int DoFObs = manif::SGal3d::DoF + manif::SE3d::DoF; // DoF obsevation equation
+  static constexpr int DoF = BundleT::DoF-1;                             // DoF whole state
+  static constexpr int DoFNoise = 4*3;                                   // b_w, b_a, n_{b_w}, n_{b_a}
+  static constexpr int DoFObs = manif::SGal3d::DoF + manif::SE3d::DoF;   // DoF obsevation equation
 
-  using ProcessMatrix = Eigen::Matrix<double, DoF, DoF>;
-  using MappingMatrix = Eigen::Matrix<double, DoF, DoFNoise>;
-  using NoiseMatrix   = Eigen::Matrix<double, DoFNoise,  DoFNoise>;
+  using MatrixDoF       = Eigen::Matrix<double, DoF, DoF>;
+  using MatrixDoF_Noise = Eigen::Matrix<double, DoF, DoFNoise>;
+  using MatrixNoise     = Eigen::Matrix<double, DoFNoise, DoFNoise>;
+
+  using MatrixManif = Eigen::Matrix<double, DoF+1, DoF+1>;
 
 
   BundleT X;
-  ProcessMatrix P;
-  NoiseMatrix Q;
+  MatrixDoF P;
+  MatrixNoise Q;
 
   Eigen::Vector3d w;      // angular velocity (IMU input)
   Eigen::Vector3d a;      // linear acceleration (IMU input)
@@ -60,7 +63,7 @@ struct State {
                               0., 0., 0.,                       // roll pitch yaw              6
                               0., 0., 0.,                       // vx, vy, vz                  3
                               0.),                              // delta t                     9
-                manif::SE3d(cfg.sensors.extrinsics.lidar2imu),   // lidar2imu                  13
+                manif::SE3d(cfg.sensors.extrinsics.lidar2imu),  // lidar2imu                  13
                 manif::R3d(cfg.sensors.intrinsics.gyro_bias),   // b_w                        16
                 manif::R3d(cfg.sensors.intrinsics.accel_bias),  // b_a                        19
                 manif::R3d(Eigen::Vector3d::UnitZ()      
@@ -83,15 +86,35 @@ struct State {
 
   void predict(const Imu& imu, const double& dt) {
 PROFC_NODE("predict")
-    
-    ProcessMatrix Gx, Gf; // Adjoint_X(u)^{-1}, J_r(u)  Sola-18, [https://arxiv.org/abs/1812.01537]
-    BundleT X_tmp = X.plus(f(imu.lin_accel, imu.ang_vel) * dt, Gx, Gf);
 
+    MatrixManif Gx_, Gf_; // Adjoint_X(u)^{-1}, J_r(u)  Sola-18, [https://arxiv.org/abs/1812.01537]
+    BundleT X_tmp = X.plus(f(imu.lin_accel, imu.ang_vel) * dt, Gx_, Gf_);
+    
+    // std::cout << "Bottom right P: " << P.bottomRightCorner(2, 2) << std::endl;
+    
     // Update covariance
-    ProcessMatrix Fx = Gx + Gf * df_dx(imu) * dt; // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (26)
-    MappingMatrix Fw = Gf * df_dw(imu) * dt;      // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (27)
+    MatrixDoF Gx = Gx_.template topLeftCorner<DoF, DoF>();
+    Gx.template bottomRightCorner<2,2>() = S2::LogJ_a(g()) 
+                                           * -manif::skew(g().normalized()) 
+                                           * S2::ExpJ_b(g());
+    // std::cout << "S2::LogJ_a(g()): " << S2::LogJ_a(g()) << std::endl;
+    // std::cout << "S2::ExpJ_a(): " << S2::ExpJ_a() << std::endl;
+    // std::cout << "S2::ExpJ_b(g()): " << S2::ExpJ_b(g()) << std::endl;
+    // std::cout << "Gx bottom right: " << Gx.bottomRightCorner(2, 2) << std::endl;
+
+
+    MatrixDoF Gf = Gf_.template topLeftCorner<DoF, DoF>();
+    Gf.template bottomRightCorner<2,2>() = S2::LogJ_a(g()) 
+                                           * S2::ExpJ_b(g());
+    // std::cout << "Gf bottom right: " << Gx.bottomRightCorner(2, 2) << std::endl;
+    
+
+    auto Fx = Gx + Gf * df_dx(imu) * dt; // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (26)
+    auto Fw = Gf * df_dw(imu) * dt;      // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (27)
 
     P = Fx * P * Fx.transpose() + Fw * Q * Fw.transpose(); 
+
+    // std::cout << "Bottom right P: " << P.bottomRightCorner(2, 2) << "\n" << std::endl;
 
     X = X_tmp;
 
@@ -124,24 +147,25 @@ PROFC_NODE("predict")
     return u;
   }
 
-  ProcessMatrix df_dx(const Imu& imu) {
-    ProcessMatrix out = ProcessMatrix::Zero();
-
+  MatrixDoF df_dx(const Imu& imu) {
+    MatrixDoF out = MatrixDoF::Zero();
 
     // velocity 
     out.block<3, 3>(3,  6) = -R().transpose()*manif::skew(g()) * -R(); // w.r.t R := d(R^-1*g)/dR * d(R^-1)/dR
     out.block<3, 3>(3, 19) = -Eigen::Matrix3d::Identity(); // w.r.t b_a 
-    out.block<3, 3>(3, 22) =  R().transpose(); // w.r.t g
-
+    out.block<2, 2>(3, 22) =  S2::B({0., 0., 0.}).transpose() 
+                              * R().transpose() * S2::ExpJ_b(g()); // w.r.t g
+    // std::cout <<  "S2::B(g()).transpose() * R().transpose() * S2::ExpJ_b(g()): " 
+    //           << (S2::B(g()).transpose() * R().transpose() * S2::ExpJ_b(g())) << std::endl;
     // rotation
     out.block<3, 3>(6, 16) = -Eigen::Matrix3d::Identity(); // w.r.t b_w
 
     return out;
   }
 
-  MappingMatrix df_dw(const Imu& imu) {
+  MatrixDoF_Noise df_dw(const Imu& imu) {
     // w = (n_w, n_a, n_{b_w}, n_{b_a})
-    MappingMatrix out = MappingMatrix::Zero();
+    MatrixDoF_Noise out = MatrixDoF_Noise::Zero();
 
     out.block<3, 3>( 3, 3) = -Eigen::Matrix3d::Identity(); // w.r.t n_a
     out.block<3, 3>( 6, 0) = -Eigen::Matrix3d::Identity(); // w.r.t n_w
@@ -251,48 +275,78 @@ PROFC_NODE("update")
 
 // IESEKF UPDATE
 
-    BundleT       X_predicted = X;
-    ProcessMatrix P_predicted = P;
+    BundleT   X_predicted = X;
+    MatrixDoF P_predicted = P;
 
     Eigen::Matrix<double, Eigen::Dynamic, DoFObs> H;
     Eigen::Matrix<double, Eigen::Dynamic, 1>      z;
-    ProcessMatrix KH;
+    MatrixDoF KH;
 
     double R = cfg.ikfom.lidar_noise;
 
     int i(0);
+    Eigen::Matrix<double, DoF, 1> tau;
 
     do {
+      // std::cout << "Update g: " << g().transpose() << std::endl;
       h_model(*this, H, z); // Update H,z and set K to zeros
 
       // update P
-      ProcessMatrix J;
-      Tangent dx = X.minus(X_predicted, J); // Xu-2021, [https://arxiv.org/abs/2107.06829] Eq. (11)
+      MatrixManif J_, Jb;
+      Tangent dx = X.minus(X_predicted, J_); // Xu-2021, [https://arxiv.org/abs/2107.06829] Eq. (11)
+      X.plus(dx, Jb);
+      MatrixDoF J = J_.template topLeftCorner<DoF, DoF>() * Jb.template topLeftCorner<DoF, DoF>();
+      auto u = S2::Log(g(), X_predicted.element<4>().coeffs());
+
+
+      J.template bottomRightCorner<2,2>() = S2::LogJ_a(g(), X_predicted.element<4>().coeffs()) 
+                                           * S2::ExpJ_b(g(), u);
 
       P = J.inverse() * P_predicted * J.inverse().transpose();
+      Eigen::Matrix<double, DoF, 1> dx_vec = dx.coeffs().head(DoF);
+      dx_vec.tail(2) = S2::Log(X.element<4>().coeffs(), 
+                               X_predicted.element<4>().coeffs());
+
+      // std::cout << "dx_vec: " << dx_vec.transpose() << std::endl;
 
       Eigen::Matrix<double, DoFObs, DoFObs> HTH = H.transpose() * H / R;
-      ProcessMatrix P_inv = P.inverse();
+      MatrixDoF P_inv = P.inverse();
       P_inv.block<DoFObs, DoFObs>(0, 0) += HTH;
       P_inv = P_inv.inverse();
 
-      Tangent Kz = P_inv.block<DoF, DoFObs>(0, 0) * H.transpose() * z / R;
+      // std::cout << "std::isnan(P_inv): " << P.array().isNaN().any() << std::endl;
+
+      Eigen::Matrix<double, DoF, 1> Kz = P_inv.block<DoF, DoFObs>(0, 0) 
+                                         * H.transpose() * z / R;
 
       KH.setZero();
       KH.block<DoF, DoFObs>(0, 0) = P_inv.block<DoF, DoFObs>(0, 0) * HTH;
+      
+      // update gravity as S2
+      tau = Kz + (KH - MatrixDoF::Identity()) * J.inverse() * dx_vec;
+      // std::cout << "tau: " << tau.transpose() << std::endl;
 
-      dx = Kz + (KH - ProcessMatrix::Identity()) * J.inverse() * dx; 
-      X = X.plus(dx);
+      X.element<4>() = manif::R3d(S2::Exp(X.element<4>().coeffs(), tau.tail(2)));
+      std::cout << "tau increment: " << tau.tail(2).transpose() << std::endl;
 
-      if ((dx.coeffs().array().abs() <= cfg.ikfom.tolerance).all()) {
-        std::cout << i << std::endl;
+      // update the rest but leave gravity unchanged
+      Tangent dx_update = Tangent::Zero();
+      dx_update.coeffs().head(DoF) = tau;
+      dx_update.coeffs().tail(3).setZero();    // leave gravity unchanged here
+      // std::cout << "dx_update: " << dx_update.coeffs().transpose() << std::endl;
+
+      X = X.plus(dx_update);
+
+      if ((tau.array().abs() <= cfg.ikfom.tolerance).all()) {
         break;
       }
 
     } while (i++ < cfg.ikfom.max_iters);    
 
+    std::cout << "End update g: " << g().transpose() << std::endl;
     X = X;
-    P = (ProcessMatrix::Identity() - KH) * P;
+    P = (MatrixDoF::Identity() - KH) * P;
+
   }
 
 
@@ -304,8 +358,7 @@ PROFC_NODE("update")
   inline double t()                const { return X.element<0>().t();                       }
   inline Eigen::Vector3d b_w()     const { return X.element<2>().coeffs();                  }
   inline Eigen::Vector3d b_a()     const { return X.element<3>().coeffs();                  }
-  inline Eigen::Vector3d g()       const { return X.element<4>().coeffs();                  }
-
+  inline Eigen::Vector3d g()       const { return X.element<4>().coeffs(); }
 
   inline Eigen::Isometry3d isometry() const {
     Eigen::Isometry3d T;
