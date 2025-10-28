@@ -64,9 +64,6 @@ namespace S2 {
 
 
   inline Vector2d Log(const Vector3d& x, const Vector3d& y) {
-    std::cout << "Log x: " << x.transpose() << std::endl;
-    std::cout << "Log y: " << y.transpose() << std::endl;
-
     Vector3d cross      = x.cross(y);
     double   cross_norm = cross.norm();
     double   dot        = x.dot(y);
