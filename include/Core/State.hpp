@@ -90,14 +90,14 @@ PROFC_NODE("predict")
     
     // Update covariance
     MatrixDoF Gx = Gx_.template topLeftCorner<DoF, DoF>();
-    Gx.template bottomRightCorner<2,2>() = S2::LogJ_a(g()) 
-                                           * S2::ExpJ_a() 
-                                           * S2::ExpJ_b(g());
+    Gx.template bottomRightCorner<2,2>() = S2::LogJ_a(g(), g()) 
+                                           * S2::composeJ_a(g(), {0., 0., 0.}) 
+                                           * S2::ExpJ_b(g(), {0., 0.});
 
     Eigen::Matrix<double, DoF, BundleT::DoF> left = Eigen::Matrix<double, DoF, BundleT::DoF>::Identity();
-    left.bottomRightCorner<2, 3>() = S2::LogJ_a(g());
+    left.bottomRightCorner<2, 3>() = S2::LogJ_a(g(), g());
     Eigen::Matrix<double, BundleT::DoF, DoF> right = Eigen::Matrix<double, BundleT::DoF, DoF>::Identity();
-    right.bottomRightCorner<3, 2>() = S2::ExpJ_b(g());
+    right.bottomRightCorner<3, 2>() = S2::ExpJ_b(g(), {0., 0.});
 
     Gf_.template bottomRightCorner<3,3>() = -manif::skew(g().normalized());  
 
@@ -257,6 +257,8 @@ PROFC_NODE("update")
     MatrixDoF P_predicted = P;
 
     Eigen::Matrix<double, Eigen::Dynamic, DoFObs> H;
+    // Eigen::Matrix<double, DoFObs, Eigen::Dynamic> K;
+
     Eigen::Matrix<double, Eigen::Dynamic, 1>      z;
     MatrixDoF KH;
 
@@ -268,20 +270,26 @@ PROFC_NODE("update")
       h_model(*this, H, z); // Update H,z and set K to zeros
 
       // update P
-      Eigen::Matrix<double, DoF, 1> dx = X.minus(X_predicted).coeffs().head(DoF);
+      MatrixManif J_;
+      Eigen::Matrix<double, DoF, 1> dx = X.minus(X_predicted, J_).coeffs().head(DoF);
       dx.tail(2) = S2::Log(g(), X_predicted.element<3>().coeffs());
+
+      MatrixDoF J = J_.topLeftCorner(DoF, DoF);
+      J.bottomLeftCorner(2, 2) = S2::LogJ_a(g(), X_predicted.element<3>().coeffs()) * S2::ExpJ_b(g());
+      P = J.inverse() * P * J.inverse().transpose();
 
       Eigen::Matrix<double, DoFObs, DoFObs> HTH = H.transpose() * H / R;
       MatrixDoF P_inv = P.inverse();
       P_inv.block<DoFObs, DoFObs>(0, 0) += HTH;
       P_inv = P_inv.inverse();
 
-      auto Kz = P_inv.block<DoF, DoFObs>(0, 0) * H.transpose() * z / R;
+      // K = P_inv.block<DoF, DoFObs>(0, 0) * H.transpose() / R;
+      Eigen::Matrix<double, DoF, 1> Kz = P_inv.block<DoF, DoFObs>(0, 0) * H.transpose() * z / R;
 
       KH.setZero();
       KH.block<DoF, DoFObs>(0, 0) = P_inv.block<DoF, DoFObs>(0, 0) * HTH;
 
-      dx = Kz + (KH - MatrixDoF::Identity()) * dx; 
+      dx = Kz + (KH - MatrixDoF::Identity()) * J.inverse() * dx; 
       
       Tangent tau = Tangent::Zero();
       tau.coeffs().head(BundleT::DoF-3) = dx.head(BundleT::DoF-3);
@@ -294,11 +302,8 @@ PROFC_NODE("update")
 
     } while(i++ < cfg.ikfom.max_iters);
 
-    std::cout << "g end update: " << g().transpose() << std::endl;
-
     X = X;
     P = (MatrixDoF::Identity() - KH) * P;
-    P = 0.5 * (P + P.transpose());
 
   }
 

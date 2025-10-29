@@ -59,7 +59,7 @@ namespace S2 {
     if (u.norm() < 1e-12)
       return x;
 
-    return R(x.cross(B(x) * u)) * x;
+    return R(B(x) * u) * x;
   }
 
 
@@ -69,7 +69,7 @@ namespace S2 {
     double   dot        = x.dot(y);
 
     if (cross_norm >= 1e-12) {
-      Vector3d axis  = cross.cross(x).normalized(); // -[x]_x^2 * y = x cross y cross x
+      Vector3d axis  = cross / cross_norm; 
       double   theta = std::atan2(cross_norm, dot);
       return B(x).transpose() * (axis*theta);
     }
@@ -84,15 +84,13 @@ namespace S2 {
 
   Matrix2x3d LogJ_a(const Vector3d& x) {
     auto a = x.normalized();
-    return -B(a).transpose() * (manif::skew(a) * manif::skew(a));
+    return B(a).transpose() * manif::skew(a);
   }
 
   Matrix2x3d LogJ_a(const Vector3d& y_, const Vector3d& x_) {
     auto x = x_.normalized();
     auto y = y_.normalized();
 
-    Vector3d double_cross      = x.cross(y).cross(x);
-    double   double_cross_norm = double_cross.norm(); 
     Vector3d cross      = x.cross(y);
     double   cross_norm = cross.norm();
     double   dot = x.dot(y);
@@ -101,14 +99,20 @@ namespace S2 {
     
     double theta = std::atan2(cross_norm, dot);
     
-    return B(x).transpose() 
-           * (1/double_cross_norm * (Matrix3d::Identity() - (double_cross*double_cross.transpose())/(double_cross_norm*double_cross_norm)) * -(manif::skew(x)*manif::skew(x))*theta 
+    auto out = B(x).transpose() 
+           * (1/cross_norm * (Matrix3d::Identity() - (cross*cross.transpose())/(cross_norm*cross_norm)) * manif::skew(x) * theta 
               + (cross/cross_norm) * (dot*x.transpose() - x.transpose())/cross_norm );
+    
+    return out;
+  }
+
+  Matrix3d ExpJ_a() {
+    return Matrix3d::Identity();
   }
 
   Matrix3x2d ExpJ_b(const Vector3d& x_) {
     auto x = x_.normalized();
-    return -(manif::skew(x) * manif::skew(x)) * B(x);
+    return -manif::skew(x) * B(x);
   }
 
   Matrix3x2d ExpJ_b(const Vector3d& x_, const Vector2d& u) {
@@ -118,12 +122,22 @@ namespace S2 {
     
     auto rot = R(x.cross(B(x) * u));
     auto Jr = manif::SO3d::Tangent(x.cross(B(x) * u)).rjac();
-    return  manif::skew(x) * rot * manif::skew(x) * Jr * manif::skew(x) * B(x);
+    auto out = -rot * manif::skew(x) * Jr * B(x);
+    return out;
   }
 
+  Matrix3d composeJ_a(const Vector3d& x_, const Vector3d& y_) {
+    auto y = y_.normalized();
 
-  Matrix3d ExpJ_a() {
-    return Matrix3d::Identity();
+    return R(y).transpose();
   }
+
+  Matrix3d composeJ_b(const Vector3d& x_, const Vector3d& y_) {
+    auto x = x_.normalized();
+    auto y = y_.normalized();
+
+    return -R(y).transpose() * manif::skew(x);
+  }
+
 
 }
