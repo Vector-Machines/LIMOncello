@@ -22,43 +22,34 @@ def _inv_sqrt_2x2(S, tol=1e-12):
 
 def B(x):
     """
-    Polar-corrected projected tangent basis:
-        B(x) = P_x B0 (B0^T P_x B0)^{-1/2},  with  P_x = I - x x^T.
-    Uses a fixed reference basis B0 (default [e_x, e_y]); if x is nearly
-    collinear with one column, switches to another fixed basis to avoid
-    singular S = B0^T P_x B0.
-    Returns a 3x2 matrix with orthonormal columns spanning T_x S^2.
+    Equivalent of the C++ function:
+    inline Matrix3x2d B(const Vector3d& x)
+    Returns a 3x2 matrix forming an orthonormal basis for the tangent plane at x ∈ R^3.
     """
-    x = np.asarray(x, dtype=float).reshape(3, 1)
-    nx = np.linalg.norm(x)
-    if nx < EPS:
-        # Arbitrary orthonormal pair if x≈0 (outside S^2)
-        return np.eye(3)[:, :2].copy()
+    e_i = np.array([0.0, 0.0, 1.0])  # UnitZ
+    E_jk = np.eye(3)[:, :2]          # first two canonical basis vectors e1, e2
 
-    x = x / nx
-    P = np.eye(3) - x @ x.T
+    norm_x = np.linalg.norm(x)
+    if norm_x < 1e-12:
+        return E_jk
 
-    # Fixed reference bases (tiny, fixed set) to avoid the singular case
-    B0_list = [
-        np.array([[1., 0.],
-                  [0., 1.],
-                  [0., 0.]]),  # [e_x, e_y]
-    ]
+    cross = np.cross(e_i.flatten(), x.flatten()).reshape(-1, 1)
+    cross_norm = np.linalg.norm(cross)
+    dot = np.dot(e_i, x)
 
-    for B0 in B0_list:
-        S = B0.T @ P @ B0  # 2x2
-        # SPD if both columns of B0 are not parallel to x
-        if np.linalg.cond(S) < 1.0 / EPS:
-            S_inv_sqrt = _inv_sqrt_2x2(S, tol=EPS)
-            return (P @ B0) @ S_inv_sqrt
+    if cross_norm < 1e-12:
+        # x parallel to e_i (either aligned or opposite)
+        if dot >= 0:
+            out = E_jk
+        else:
+            out = R(np.array([np.pi, 0.0, 0.0])) @ E_jk
+    else:
+        theta = np.arctan2(cross_norm, dot)
+        axis = cross / cross_norm
+        out = R(axis * theta) @ E_jk
 
-    # Extremely degenerate numeric corner (shouldn’t happen on S^2):
-    # fall back to the first basis with a tiny regularization.
-    B0 = B0_list[0]
-    S = B0.T @ P @ B0
-    S_reg = S + EPS * np.eye(2)
-    S_inv_sqrt = _inv_sqrt_2x2(S_reg, tol=EPS)
-    return (P @ B0) @ S_inv_sqrt
+    return out / norm_x
+
 
 def Exp(x, u):
     if np.linalg.norm(u) < EPS:
@@ -66,7 +57,7 @@ def Exp(x, u):
     
     Bu = B(x) @ u
     angleAxis = np.cross(x.flatten(), Bu.flatten())
-    return R(angleAxis) @ x
+    return R(Bu) @ x
 
 def ExpRot(x, u):
     if np.linalg.norm(u) < EPS:
@@ -172,5 +163,4 @@ if __name__ == "__main__":
 
     print("left: ", left)
     print("right: ", right)
-
 
