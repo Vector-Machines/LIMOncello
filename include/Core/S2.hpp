@@ -122,7 +122,7 @@ namespace S2 {
     
     auto rot = R(x.cross(B(x) * u));
     auto Jr = manif::SO3d::Tangent(x.cross(B(x) * u)).rjac();
-    auto out = -rot * manif::skew(x) * Jr * B(x);
+    auto out =  -rot * manif::skew(x) * Jr * B(x);
     return out;
   }
 
