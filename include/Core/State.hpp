@@ -34,24 +34,25 @@ struct State {
   >;
 
   using Tangent = typename BundleT::Tangent; 
+  
+  template<int R = Eigen::Dynamic, int C = R>
+  using Mat = Eigen::Matrix<double, R, C>;
 
-  static constexpr int DoF = BundleT::DoF-1;                             // DoF whole state
-  static constexpr int DoFNoise = 4*3;                                   // b_w, b_a, n_{b_w}, n_{b_a}
+  template<int N = Eigen::Dynamic>
+  using Vec = Eigen::Matrix<double, N, 1>;
+
+
+  static constexpr int DoF = BundleT::DoF;            // DoF whole state
+  static constexpr int DoFS2 = DoF-1;                   // DoF g as S2
+  static constexpr int DoFNoise = 4*3;                // b_w, b_a, n_{b_w}, n_{b_a}
   static constexpr int DoFObs = manif::SGal3d::DoF;   // DoF obsevation equation
 
-  using MatrixDoF       = Eigen::Matrix<double, DoF, DoF>;
-  using MatrixDoF_Noise = Eigen::Matrix<double, DoF+1, DoFNoise>;
-  using MatrixNoise     = Eigen::Matrix<double, DoFNoise, DoFNoise>;
-
-  using MatrixManif = Eigen::Matrix<double, DoF+1, DoF+1>;
-
-
   BundleT X;
-  MatrixDoF P;
-  MatrixNoise Q;
+  Mat<DoFS2> P;
+  Mat<DoFNoise> Q;
 
-  Eigen::Vector3d w;      // angular velocity (IMU input)
-  Eigen::Vector3d a;      // linear acceleration (IMU input)
+  Vec<3> w; // angular velocity (IMU input)
+  Vec<3> a; // linear acceleration (IMU input)
 
   double stamp;
 
@@ -64,7 +65,7 @@ struct State {
                               0.),                              // delta t                     9
                 manif::R3d(cfg.sensors.intrinsics.gyro_bias),   // b_w                        10
                 manif::R3d(cfg.sensors.intrinsics.accel_bias),  // b_a                        13
-                manif::R3d(Eigen::Vector3d::UnitZ()      
+                manif::R3d(Vec<3>::UnitZ()      
                            * -cfg.sensors.extrinsics.gravity)); // g                          16
 
     P.setIdentity();
@@ -85,24 +86,32 @@ struct State {
   void predict(const Imu& imu, const double& dt) {
 PROFC_NODE("predict")
 
-    MatrixManif Gx_, Gf_; // Adjoint_X(u)^{-1}, J_r(u)  Sola-18, [https://arxiv.org/abs/1812.01537]
-    BundleT X_tmp = X.plus(f(imu.lin_accel, imu.ang_vel) * dt, Gx_, Gf_);
+    Mat<DoF> Adj, Jr; // Adjoint_X(u)^{-1}, J_r(u)  Sola-18, [https://arxiv.org/abs/1812.01537]
+    BundleT X_tmp = X.plus(f(imu.lin_accel, imu.ang_vel) * dt, Adj, Jr);
     
-    // Update covariance
-    MatrixDoF Gx = Gx_.template topLeftCorner<DoF, DoF>();
-    Gx.template bottomRightCorner<2,2>() = S2::LogJ_a(g(), g()) 
-                                           * S2::composeJ_a(g(), {0., 0., 0.}) 
-                                           * S2::ExpJ_b(g(), {0., 0.});
+    // S2 particular cases. No increment for g
+    Mat<3> AdjS2, JrS2;
+    S2::compose(g(), {0., 0., 0.}, AdjS2, JrS2);
 
-    Eigen::Matrix<double, DoF, BundleT::DoF> left = Eigen::Matrix<double, DoF, BundleT::DoF>::Identity();
-    left.bottomRightCorner<2, 3>() = S2::LogJ_a(g(), g());
-    Eigen::Matrix<double, BundleT::DoF, DoF> right = Eigen::Matrix<double, BundleT::DoF, DoF>::Identity();
-    right.bottomRightCorner<3, 2>() = S2::ExpJ_b(g(), {0., 0.});
+    Adj.template bottomRightCorner<3, 3>() = AdjS2;
+    Jr.template bottomRightCorner<3, 3>() = JrS2;
 
-    Gf_.template bottomRightCorner<3,3>() = -manif::skew(g().normalized());  
+    // Projections: Left
+    Mat<2, 3> Jx;
+    S2::ominus(g(), g(), Jx);
 
-    auto Fx = Gx + left * Gf_ * df_dx(imu) * dt * right; // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (26)
-    auto Fw = left * Gf_ * df_dw(imu) * dt;      // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (27)
+    Mat<DoFS2, DoF> left = Mat<DoFS2, DoF>::Identity();
+    left.template bottomRightCorner<2, 3>() = Jx;
+    
+    // Projections: Right
+    Mat<3, 2> Ju;
+    S2::oplus(g(), {0., 0.}, {}, Ju);
+
+    Mat<DoF, DoFS2> right = Mat<DoF, DoFS2>::Identity();
+    right.template bottomRightCorner<3, 2>() = Ju;
+
+    Mat<DoFS2>           Fx = left * (Adj + Jr * df_dx(imu) * dt) * right; // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (26)
+    Mat<DoFS2, DoFNoise> Fw = left * Adj * df_dw() * dt;                   // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (27)
 
     P = Fx * P * Fx.transpose() + Fw * Q * Fw.transpose(); 
 
@@ -124,7 +133,7 @@ PROFC_NODE("predict")
   }
 
 
-  Tangent f(const Eigen::Vector3d& lin_acc, const Eigen::Vector3d& ang_vel) {
+  Tangent f(const Vec<3>& lin_acc, const Vec<3>& ang_vel) {
 
     Tangent u = Tangent::Zero();
     u.element<0>().coeffs() << 0., 0., 0., 
@@ -137,27 +146,27 @@ PROFC_NODE("predict")
     return u;
   }
 
-  MatrixManif df_dx(const Imu& imu) {
-    MatrixManif out = MatrixManif::Zero();
+  Mat<DoF> df_dx(const Imu& imu) {
+    Mat<DoF> out = Mat<DoF>::Zero();
 
     // velocity 
     out.block<3, 3>(3,  6) = -R().transpose()*manif::skew(g()) * -R(); // w.r.t R := d(R^-1*g)/dR * d(R^-1)/dR
-    out.block<3, 3>(3, 13) = -Eigen::Matrix3d::Identity(); // w.r.t b_a 
+    out.block<3, 3>(3, 13) = -Mat<3>::Identity(); // w.r.t b_a 
     out.block<3, 3>(3, 16) =  R().transpose(); // w.r.t g
     // rotation
-    out.block<3, 3>(6, 10) = -Eigen::Matrix3d::Identity(); // w.r.t b_w
+    out.block<3, 3>(6, 10) = -Mat<3>::Identity(); // w.r.t b_w
 
     return out;
   }
 
-  MatrixDoF_Noise df_dw(const Imu& imu) {
+  Mat<DoF, DoFNoise> df_dw() {
     // w = (n_w, n_a, n_{b_w}, n_{b_a})
-    MatrixDoF_Noise out = MatrixDoF_Noise::Zero();
+    Mat<DoF, DoFNoise> out = Mat<DoF, DoFNoise>::Zero();
 
-    out.block<3, 3>( 3, 3) = -Eigen::Matrix3d::Identity(); // w.r.t n_a
-    out.block<3, 3>( 6, 0) = -Eigen::Matrix3d::Identity(); // w.r.t n_w
-    out.block<3, 3>(10, 6) =  Eigen::Matrix3d::Identity(); // w.r.t n_{b_w}
-    out.block<3, 3>(13, 9) =  Eigen::Matrix3d::Identity(); // w.r.t n_{b_a}
+    out.block<3, 3>( 3, 3) = -Mat<3>::Identity(); // w.r.t n_a
+    out.block<3, 3>( 6, 0) = -Mat<3>::Identity(); // w.r.t n_w
+    out.block<3, 3>(10, 6) =  Mat<3>::Identity(); // w.r.t n_{b_w}
+    out.block<3, 3>(13, 9) =  Mat<3>::Identity(); // w.r.t n_{b_a}
     
     return out;
   }
@@ -176,8 +185,8 @@ PROFC_NODE("update")
 // OBSERVATION MODEL
 
     auto h_model = [&](const State& s,
-                       Eigen::Matrix<double, Eigen::Dynamic, DoFObs>& H,
-                       Eigen::Matrix<double, Eigen::Dynamic,  1>&     z) {
+                       Mat<Eigen::Dynamic, DoFObs>& H,
+                       Mat<Eigen::Dynamic, 1>&      z) {
 
       int N = cloud->size();
 
@@ -194,8 +203,8 @@ PROFC_NODE("update")
           indices.end(),
           [&](int i) {
             PointT pt = cloud->points[i];
-            Eigen::Vector3d p = pt.getVector3fMap().cast<double>();
-            Eigen::Vector3d g = s.isometry() * s.L2I_isometry() * p; // global coords 
+            Vec<3> p = pt.getVector3fMap().cast<double>();
+            Vec<3> g = s.isometry() * s.L2I_isometry() * p; // global coords 
 
             std::vector<pcl::PointXYZ> neighbors;
             std::vector<float> pointSearchSqDis;
@@ -225,8 +234,8 @@ PROFC_NODE("update")
         }
       }
 
-      H = Eigen::MatrixXd::Zero(first_planes.size(), DoFObs);
-      z = Eigen::MatrixXd::Zero(first_planes.size(), 1);
+      H = Mat<>::Zero(first_planes.size(), DoFObs);
+      z = Mat<>::Zero(first_planes.size(), 1);
 
       std::vector<int> indices(first_planes.size());
       std::iota(indices.begin(), indices.end(), 0);
@@ -240,8 +249,8 @@ PROFC_NODE("update")
           Plane m = first_planes[i];
 
           // Differentiate w.r.t. SGal3
-          Eigen::Matrix<double, 3, manif::SGal3d::DoF> J_s;
-          Eigen::Vector3d g = s.X.element<0>().act(s.L2I_isometry() * m.p, J_s);
+          Mat<3, manif::SGal3d::DoF> J_s;
+          Vec<3> g = s.X.element<0>().act(s.L2I_isometry() * m.p, J_s);
 
           H.block<1, manif::SGal3d::DoF>(i, 0) << m.n.head(3).transpose() * J_s;
 
@@ -253,49 +262,56 @@ PROFC_NODE("update")
 
 // IESEKF UPDATE
 
-    BundleT   X_predicted = X;
-    MatrixDoF P_predicted = P;
+    BundleT    X_predicted = X;
+    Mat<DoFS2> P_predicted = P;
 
-    Eigen::Matrix<double, Eigen::Dynamic, DoFObs> H;
-    // Eigen::Matrix<double, DoFObs, Eigen::Dynamic> K;
-
-    Eigen::Matrix<double, Eigen::Dynamic, 1>      z;
-    MatrixDoF KH;
+    Mat<Eigen::Dynamic, DoFObs> H;
+    Mat<Eigen::Dynamic, 1>      z;
+    Mat<DoFS2> KH;
 
     double R = cfg.ikfom.lidar_noise;
+
+    Vec<3> g_pred = X_predicted.element<3>().coeffs();
 
     int i(0);
 
     do {
       h_model(*this, H, z); // Update H,z and set K to zeros
 
-      // update P
-      MatrixManif J_;
-      Eigen::Matrix<double, DoF, 1> dx = X.minus(X_predicted, J_).coeffs().head(DoF);
-      dx.tail(2) = S2::Log(g(), X_predicted.element<3>().coeffs());
+      // project P to homemorphic space
+      Mat<DoF> J_;
+      Vec<DoFS2> dx = X.minus(X_predicted, J_).coeffs().head(DoFS2);
+      dx.tail(2) = S2::ominus(g(), g_pred);
 
-      MatrixDoF J = J_.topLeftCorner(DoF, DoF);
-      J.bottomLeftCorner(2, 2) = S2::LogJ_a(g(), X_predicted.element<3>().coeffs()) * S2::ExpJ_b(g());
-      P = J.inverse() * P * J.inverse().transpose();
+      // d/db ((g oplus b) ominus g_pred) | b = 0
+      Mat<DoFS2> J = J_.topLeftCorner(DoFS2, DoFS2);
+      Mat<2, 3> J_ab; S2::ominus(g(), g_pred, J_ab);
+      Mat<3, 2>  J_b; S2::oplus(g(), {0., 0.}, {}, J_b);
 
-      Eigen::Matrix<double, DoFObs, DoFObs> HTH = H.transpose() * H / R;
-      MatrixDoF P_inv = P.inverse();
-      P_inv.block<DoFObs, DoFObs>(0, 0) += HTH;
+      J.template bottomLeftCorner<2, 2>() = J_ab * J_b;
+      P = J.inverse() * P * J.inverse().transpose(); // !! projection
+
+      // Build K from blocks (numerical stability)
+      Mat<DoFObs> HTH   = H.transpose() * H / R;
+      
+      Mat<DoFS2>  P_inv = P.inverse();
+      P_inv.template topLeftCorner<DoFObs, DoFObs>() += HTH;
       P_inv = P_inv.inverse();
 
-      // K = P_inv.block<DoF, DoFObs>(0, 0) * H.transpose() / R;
-      Eigen::Matrix<double, DoF, 1> Kz = P_inv.block<DoF, DoFObs>(0, 0) * H.transpose() * z / R;
+      Vec<DoFS2> Kz = P_inv.template topLeftCorner<DoFS2, DoFObs>() * H.transpose() * z / R;
 
       KH.setZero();
-      KH.block<DoF, DoFObs>(0, 0) = P_inv.block<DoF, DoFObs>(0, 0) * HTH;
+      KH.template topLeftCorner<DoFS2, DoFObs>() = P_inv.template topLeftCorner<DoFS2, DoFObs>() * HTH;
 
-      dx = Kz + (KH - MatrixDoF::Identity()) * J.inverse() * dx; 
+      dx = Kz + (KH - Mat<DoFS2>::Identity()) * J.inverse() * dx; 
       
+      // Update manif Bundle, left g unmodified
       Tangent tau = Tangent::Zero();
-      tau.coeffs().head(BundleT::DoF-3) = dx.head(BundleT::DoF-3);
-      X = X.plus(tau);
+      tau.coeffs().head(DoF-3) = dx.head(DoF-3);
 
-      g(S2::Exp(g(), dx.tail(2)));
+      // Update
+      X = X.plus(tau);
+      g(S2::oplus(g(), dx.tail(2)));
 
       if ((dx.array().abs() <= cfg.ikfom.tolerance).all())
         break;
@@ -303,20 +319,20 @@ PROFC_NODE("update")
     } while(i++ < cfg.ikfom.max_iters);
 
     X = X;
-    P = (MatrixDoF::Identity() - KH) * P;
+    P = (Mat<DoFS2>::Identity() - KH) * P;
 
   }
 
 
 // Getters
-  inline Eigen::Vector3d p()       const { return X.element<0>().translation();             }
-  inline Eigen::Matrix3d R()       const { return X.element<0>().quat().toRotationMatrix(); }
+  inline Vec<3>                p() const { return X.element<0>().translation();             }
+  inline Mat<3>                R() const { return X.element<0>().quat().toRotationMatrix(); }
   inline Eigen::Quaterniond quat() const { return X.element<0>().quat();                    }
-  inline Eigen::Vector3d v()       const { return X.element<0>().linearVelocity();          }
-  inline double t()                const { return X.element<0>().t();                       }
-  inline Eigen::Vector3d b_w()     const { return X.element<1>().coeffs();                  }
-  inline Eigen::Vector3d b_a()     const { return X.element<2>().coeffs();                  }
-  inline Eigen::Vector3d g()       const { return X.element<3>().coeffs(); }
+  inline Vec<3>                v() const { return X.element<0>().linearVelocity();          }
+  inline double                t() const { return X.element<0>().t();                       }
+  inline Vec<3>              b_w() const { return X.element<1>().coeffs();                  }
+  inline Vec<3>              b_a() const { return X.element<2>().coeffs();                  }
+  inline Vec<3>                g() const { return X.element<3>().coeffs();                  }
 
   inline Eigen::Isometry3d isometry() const {
     Eigen::Isometry3d T;
@@ -334,9 +350,9 @@ PROFC_NODE("update")
   }
 
 // Setters
-  void b_w(const Eigen::Vector3d& in) { X.element<1>() = manif::R3d(in); }
-  void b_a(const Eigen::Vector3d& in) { X.element<2>() = manif::R3d(in); }
-  void g(const Eigen::Vector3d& in)   { X.element<3>() = manif::R3d(in); }
+  void b_w(const Vec<3>& in) { X.element<1>() = manif::R3d(in); }
+  void b_a(const Vec<3>& in) { X.element<2>() = manif::R3d(in); }
+  void g(const   Vec<3>& in) { X.element<3>() = manif::R3d(in); }
 
 };
 

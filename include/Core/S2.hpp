@@ -2,6 +2,8 @@
 
 #include <cmath>
 #include <optional>
+#include <cassert>
+#include <functional>
 #include <stdexcept>
 
 #include <Eigen/Dense>
@@ -22,8 +24,25 @@ namespace S2 {
   using Matrix2x3d = Eigen::Matrix<double, 2, 3>;
   using Matrix3x2d = Eigen::Matrix<double, 3, 2>; 
 
+  template <typename MatT>
+  using Opt = std::optional<Eigen::Ref<MatT>>;
+
   inline Matrix3d R(const Vector3d& x) {
     return manif::SO3d::Tangent(x).exp().rotation();
+  }
+
+  Vector3d compose(const Vector3d& x, 
+                   const Vector3d& y,
+                   Opt<Matrix3d> J_x = std::nullopt,
+                   Opt<Matrix3d> J_y = std::nullopt) {
+    
+    Matrix3d Ry = R(y);
+    Vector3d out = Ry * x;
+
+    if (J_x) *J_x = Ry;
+    if (J_y) *J_y = -Ry * manif::skew(x) * manif::SO3d::Tangent(y).rjac() ;
+
+    return out;
   }
 
 
@@ -55,89 +74,68 @@ namespace S2 {
   }
 
 
-  inline Vector3d Exp(const Vector3d& x, const Vector2d& u) {
-    if (u.norm() < 1e-12)
-      return x;
+  inline Vector3d oplus(const Vector3d& x, 
+                        const Vector2d& u,
+                        Opt<Matrix3d>   J_x = std::nullopt,
+                        Opt<Matrix3x2d> J_u = std::nullopt) {
 
-    return R(B(x) * u) * x;
+    bool tinyu = u.norm() < 1e-12;
+    
+    Matrix3d RBu = R(B(x)*u);
+    Vector3d out = tinyu ? x : (RBu*x).eval();
+
+    if (J_x) { assert(tinyu); *J_x = Matrix3d::Identity(); }
+    if (J_u) {
+      if (tinyu)
+        *J_u = -manif::skew(x)*B(x);
+      else
+        *J_u = -RBu * manif::skew(x) * manif::SO3d::Tangent(B(x)*u).rjac() * B(x);
+    }
+
+    return out; 
   }
 
 
-  inline Vector2d Log(const Vector3d& x, const Vector3d& y) {
+  inline Vector2d ominus(const Vector3d& y, 
+                         const Vector3d& x,
+                         Opt<Matrix2x3d> J_y = std::nullopt) {
+
     Vector3d cross      = x.cross(y);
     double   cross_norm = cross.norm();
     double   dot        = x.dot(y);
 
+    Vector2d out;
     if (cross_norm >= 1e-12) {
       Vector3d axis  = cross / cross_norm; 
       double   theta = std::atan2(cross_norm, dot);
-      return B(x).transpose() * (axis*theta);
+      out = B(x).transpose() * (axis*theta);
+
+      if (J_y) {
+        double   cross_normSq = cross.squaredNorm();
+        double   y_normSq     = y.squaredNorm();
+        Matrix3d cross_outer  = cross*cross.transpose();
+
+        *J_y = B(x).transpose() 
+               * (1/cross_norm * (Matrix3d::Identity() - cross_outer/cross_normSq) * manif::skew(x) * theta 
+               + axis * (dot*y.transpose() - y_normSq*x.transpose())/(cross_norm*y_normSq));
+      }
+    } else {
+      // Collinear case: s ~ 0
+      // y in same direction as x -> zero rotation in the tangent or either
+      // Antipodal: angle = pi, axis is not unique (any unit vector ⟂ x).
+      // Pick a consistent tangent direction; e.g. first basis vector of B(x).
+      // This makes the result finite (norm = pi) but not unique by geometry.
+      out = dot >= 0. ? Vector2d::Zero() : (M_PI*Vector2d::UnitX()).eval();
+
+      if (J_y) { 
+        if (dot < 0.)
+          throw std::domain_error("S2::ominus derivative not defined (non-unique)");
+
+        *J_y = B(x).transpose() * manif::skew(x); // no need to multiply by 1 / ||x||^2
+                                                  // B(x) already normalizes and Fx if 
+                                                  // left multiplied by B(x) again
+      }
     }
-
-    // Collinear case: s ~ 0
-    // y in same direction as x -> zero rotation in the tangent or either
-    // Antipodal: angle = pi, axis is not unique (any unit vector ⟂ x).
-    // Pick a consistent tangent direction; e.g. first basis vector of B(x).
-    // This makes the result finite (norm = pi) but not unique by geometry.
-    return dot >= 0. ? Vector2d::Zero() : (M_PI*Vector2d::UnitX()).eval();
-  }
-
-  Matrix2x3d LogJ_a(const Vector3d& x) {
-    auto a = x.normalized();
-    return B(a).transpose() * manif::skew(a);
-  }
-
-  Matrix2x3d LogJ_a(const Vector3d& y_, const Vector3d& x_) {
-    auto x = x_.normalized();
-    auto y = y_.normalized();
-
-    Vector3d cross      = x.cross(y);
-    double   cross_norm = cross.norm();
-    double   dot = x.dot(y);
-    if (cross_norm < 1e-12)
-      return LogJ_a(y_);
-    
-    double theta = std::atan2(cross_norm, dot);
-    
-    auto out = B(x).transpose() 
-           * (1/cross_norm * (Matrix3d::Identity() - (cross*cross.transpose())/(cross_norm*cross_norm)) * manif::skew(x) * theta 
-              + (cross/cross_norm) * (dot*x.transpose() - x.transpose())/cross_norm );
-    
     return out;
   }
-
-  Matrix3d ExpJ_a() {
-    return Matrix3d::Identity();
-  }
-
-  Matrix3x2d ExpJ_b(const Vector3d& x_) {
-    auto x = x_.normalized();
-    return -manif::skew(x) * B(x);
-  }
-
-  Matrix3x2d ExpJ_b(const Vector3d& x_, const Vector2d& u) {
-    auto x = x_.normalized();
-    if (u.norm() < 1e-12)
-      return ExpJ_b(x_);
-    
-    auto rot = R(x.cross(B(x) * u));
-    auto Jr = manif::SO3d::Tangent(x.cross(B(x) * u)).rjac();
-    auto out =  -rot * manif::skew(x) * Jr * B(x);
-    return out;
-  }
-
-  Matrix3d composeJ_a(const Vector3d& x_, const Vector3d& y_) {
-    auto y = y_.normalized();
-
-    return R(y).transpose();
-  }
-
-  Matrix3d composeJ_b(const Vector3d& x_, const Vector3d& y_) {
-    auto x = x_.normalized();
-    auto y = y_.normalized();
-
-    return -R(y).transpose() * manif::skew(x);
-  }
-
-
 }
