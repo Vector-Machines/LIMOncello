@@ -72,6 +72,23 @@ sensor_msgs::PointCloud2 toROS(const PointCloudT::Ptr& cloud) {
   return out;
 }
 
+sensor_msgs::Imu toROS(const Imu& in) {
+  sensor_msgs::Imu out;
+
+  out.header.stamp = ros::Time::now();
+  out.header.frame_id = Config::getInstance().topics.frame_id;
+
+  out.angular_velocity.x = in.ang_vel(0);
+  out.angular_velocity.y = in.ang_vel(1);
+  out.angular_velocity.z = in.ang_vel(2);
+
+  out.linear_acceleration.x = in.lin_accel(0);
+  out.linear_acceleration.y = in.lin_accel(1);
+  out.linear_acceleration.z = in.lin_accel(2);
+
+  return out;
+}
+
 nav_msgs::Odometry toROS(State& state) {
 
   Config& cfg = Config::getInstance();

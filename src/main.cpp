@@ -38,7 +38,8 @@ class Manager {
   bool stop_ioctree_update_;
 
   ros::Publisher pub_state_, 
-                 pub_frame_, 
+                 pub_frame_,
+                 pub_imu_, 
                  pub_raw_, 
                  pub_deskewed_, 
                  pub_downsampled_, 
@@ -67,6 +68,7 @@ public:
     pub_frame_ = nh.advertise<sensor_msgs::PointCloud2>(cfg.topics.output.frame, 10);
 
     // Debug only
+    pub_imu_         = nh.advertise<sensor_msgs::Imu>("debug/corrected_imu",       10);
     pub_raw_         = nh.advertise<sensor_msgs::PointCloud2>("debug/raw",         10);
     pub_deskewed_    = nh.advertise<sensor_msgs::PointCloud2>("debug/deskewed",    10);
     pub_downsampled_ = nh.advertise<sensor_msgs::PointCloud2>("debug/downsampled", 10);
@@ -142,6 +144,9 @@ public:
 
       pub_state_.publish(toROS(state_));
       br.sendTransform(toTF(state_));
+
+      if (cfg.debug)
+        pub_imu_.publish(toROS(imu));
     }
   }
 
@@ -218,16 +223,14 @@ PROFC_NODE("LiDAR Callback")
 
     state_.update(filtered, ioctree_);
 
-    Eigen::Isometry3f T1 = (state_.isometry() * state_.L2baselink_isometry()).cast<float>();
-    Eigen::Isometry3f T2 = (state_.isometry() * state_.L2I_isometry()).cast<float>();
-
+    Eigen::Isometry3f T = state_.L2baselink_isometry().cast<float>();
   mtx_state_.unlock();
 
     PointCloudT::Ptr global(boost::make_shared<PointCloudT>());
-    pcl::transformPointCloud(*deskewed, *global, T1);
+    pcl::transformPointCloud(*deskewed, *global, T);
 
     PointCloudT::Ptr to_save(boost::make_shared<PointCloudT>());
-    pcl::transformPointCloud(*filtered, *to_save, T2);
+    pcl::transformPointCloud(*filtered, *to_save, T);
 
     // Publish
     pub_state_.publish(toROS(state_));
@@ -237,7 +240,7 @@ PROFC_NODE("LiDAR Callback")
       pub_raw_.publish(toROS(raw));
       pub_deskewed_.publish(toROS(deskewed));
       pub_downsampled_.publish(toROS(downsampled));
-      pub_filtered_.publish(toROS(filtered));
+      pub_filtered_.publish(toROS(to_save));
     }
 
     // Update map

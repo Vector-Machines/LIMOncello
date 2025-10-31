@@ -58,9 +58,13 @@ struct State {
 
   State() : stamp(-1.0) { 
     Config& cfg = Config::getInstance();
+    
+    Vec<3> p = cfg.sensors.extrinsics.imu2baselink.translation();
+    Vec<3> th = cfg.sensors.extrinsics.imu2baselink.linear().eulerAngles(0, 1, 2);
+
                                                                 //                  Tangent (idx)
-    X = BundleT(manif::SGal3d(0., 0., 0.,                       // x y z                       0
-                              0., 0., 0.,                       // roll pitch yaw              6
+    X = BundleT(manif::SGal3d(p.x(),  p.y(),  p.z(),            // x y z                       0
+                              th.x(), th.y(), th.z(),           // roll pitch yaw              6
                               0., 0., 0.,                       // vx, vy, vz                  3
                               0.),                              // delta t                     9
                 manif::R3d(cfg.sensors.intrinsics.gyro_bias),   // b_w                        10
@@ -70,6 +74,9 @@ struct State {
 
     P.setIdentity();
     P *= cfg.ikfom.covariance.initial_cov;
+
+    P.template bottomRightCorner<2+6, 2+6>() *= 0.2/cfg.ikfom.covariance.initial_cov;
+    // P.template topLeftCorner<6, 6>() *= 0.01/cfg.ikfom.covariance.initial_cov;
 
     w.setZero();
     a.setZero();
@@ -279,29 +286,29 @@ PROFC_NODE("update")
       h_model(*this, H, z); // Update H,z and set K to zeros
 
       // project P to homemorphic space
-      Mat<DoF> J_;
-      Vec<DoFS2> dx = X.minus(X_predicted, J_).coeffs().head(DoFS2);
-      dx.tail(2) = S2::ominus(g(), g_pred);
+        Mat<DoF> J_;
+        Vec<DoFS2> dx = X.minus(X_predicted, J_).coeffs().head(DoFS2);
+        dx.tail(2) = S2::ominus(g(), g_pred);
 
-      // d/db ((g oplus b) ominus g_pred) | b = 0
-      Mat<DoFS2> J = J_.topLeftCorner(DoFS2, DoFS2);
-      Mat<2, 3> J_ab; S2::ominus(g(), g_pred, J_ab);
-      Mat<3, 2>  J_b; S2::oplus(g(), {0., 0.}, {}, J_b);
+        // d/db ((g oplus b) ominus g_pred) | b = 0
+        Mat<DoFS2> J = J_.topLeftCorner(DoFS2, DoFS2);
+        Mat<2, 3> J_ab; S2::ominus(g(), g_pred, J_ab);
+        Mat<3, 2>  J_b; S2::oplus(g(), {0., 0.}, {}, J_b);
 
-      J.template bottomLeftCorner<2, 2>() = J_ab * J_b;
-      P = J.inverse() * P * J.inverse().transpose(); // !! projection
+        J.template bottomLeftCorner<2, 2>() = J_ab * J_b;
+        P = J.inverse() * P * J.inverse().transpose(); // !! projection
 
       // Build K from blocks (numerical stability)
-      Mat<DoFObs> HTH   = H.transpose() * H / R;
-      
-      Mat<DoFS2>  P_inv = P.inverse();
-      P_inv.template topLeftCorner<DoFObs, DoFObs>() += HTH;
-      P_inv = P_inv.inverse();
+        Mat<DoFObs> HTH   = H.transpose() * H / R;
+        
+        Mat<DoFS2>  P_inv = P.inverse();
+        P_inv.template topLeftCorner<DoFObs, DoFObs>() += HTH;
+        P_inv = P_inv.inverse();
 
-      Vec<DoFS2> Kz = P_inv.template topLeftCorner<DoFS2, DoFObs>() * H.transpose() * z / R;
+        Vec<DoFS2> Kz = P_inv.template topLeftCorner<DoFS2, DoFObs>() * H.transpose() * z / R;
 
-      KH.setZero();
-      KH.template topLeftCorner<DoFS2, DoFObs>() = P_inv.template topLeftCorner<DoFS2, DoFObs>() * HTH;
+        KH.setZero();
+        KH.template topLeftCorner<DoFS2, DoFObs>() = P_inv.template topLeftCorner<DoFS2, DoFObs>() * HTH;
 
       dx = Kz + (KH - Mat<DoFS2>::Identity()) * J.inverse() * dx; 
       
@@ -320,6 +327,8 @@ PROFC_NODE("update")
 
     X = X;
     P = (Mat<DoFS2>::Identity() - KH) * P;
+
+    std::cout << P << std::endl;
 
   }
 
@@ -346,7 +355,7 @@ PROFC_NODE("update")
   }
 
   inline Eigen::Isometry3d L2baselink_isometry() const {
-    return Config::getInstance().sensors.extrinsics.imu2baselink * L2I_isometry();
+    return isometry() * L2I_isometry();
   }
 
 // Setters
