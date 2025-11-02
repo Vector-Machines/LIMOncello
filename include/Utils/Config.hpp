@@ -98,7 +98,6 @@ struct Config {
   } filters;
 
   struct IKFoM {
-  	int query_iters;
   	int max_iters;
   	float tolerance;
   	float lidar_noise;

@@ -30,7 +30,6 @@ sensors:
 
   time_offset: false # whether to take into account a possible sync offset
                     # between IMU and LiDAR (set to true if they are not properly in sync)
-  TAI_offset: 0.
 
   extrinsics:
     NED: true # North, East, Down convention for IMU coordinates (NEU by default)
@@ -91,7 +90,6 @@ filters:
 
 
 IKFoM:  # Iterative Kalman Filter on Manifolds lib
-  query_iters: 3 # number of iterations doing KNN from max iterations 
   max_iters: 3  # max num of iterations of the IESEKF
   tolerance: 0.001                      
   lidar_noise: 0.001
@@ -102,7 +100,7 @@ IKFoM:  # Iterative Kalman Filter on Manifolds lib
     accel: 1.53e-2       # [rad^2]
     bias_gyro: 1.54e-5   # [m^2/s^2 * sqrt(s)]
     bias_accel: 3.38e-4  # [rad/s * sqrt(s)]
-    initial_cov: 0.01     # Initial covariance for every element in the state
+    initial_cov: 0.001     # Initial covariance for every element in the state
                          # i.e., P = I * initial_cov 
   
   plane:                     # plane features for point to plane ICP

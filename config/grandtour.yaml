@@ -22,7 +22,7 @@ sensors:
     hz: 100
 
   calibration:  # automatic IMU calibration (if all set to false, no calibration will be done)
-    gravity: true           # estimate gravity vector
+    gravity_align: true           # estimate gravity vector
     accel: true             # estimate lin. accel. bias
     gyro: true              # estimate ang. vel. bias
     time: 3.               # time to estimate (during this time, the 
@@ -87,7 +87,6 @@ filters:
 
 
 IKFoM:  # Iterative Kalman Filter on Manifolds lib
-  query_iters: 3 # number of iterations doing KNN from max iterations 
   max_iters: 3  # max num of iterations of the IESEKF
   tolerance: 0.001                      
   lidar_noise: 0.0005

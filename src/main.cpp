@@ -39,7 +39,6 @@ class Manager {
 
   ros::Publisher pub_state_, 
                  pub_frame_,
-                 pub_imu_, 
                  pub_raw_, 
                  pub_deskewed_, 
                  pub_downsampled_, 
@@ -69,7 +68,6 @@ public:
     pub_frame_ = nh.advertise<sensor_msgs::PointCloud2>(cfg.topics.output.frame, 10);
 
     // Debug only
-    pub_imu_         = nh.advertise<sensor_msgs::Imu>("debug/corrected_imu",       10);
     pub_raw_         = nh.advertise<sensor_msgs::PointCloud2>("debug/raw",         10);
     pub_deskewed_    = nh.advertise<sensor_msgs::PointCloud2>("debug/deskewed",    10);
     pub_downsampled_ = nh.advertise<sensor_msgs::PointCloud2>("debug/downsampled", 10);
@@ -145,9 +143,6 @@ public:
 
       pub_state_.publish(toROS(state_));
       br.sendTransform(toTF(state_));
-
-      if (cfg.debug)
-        pub_imu_.publish(toROS(imu));
     }
   }
 
@@ -157,19 +152,19 @@ PROFC_NODE("LiDAR Callback")
 
     Config& cfg = Config::getInstance();
 
+    if (not imu_calibrated_)
+      return;
+    
+    if (state_buffer_.empty()) {
+      ROS_ERROR("[LIMONCELLO] No IMUs received");
+      return;
+    }
+    
     PointCloudT::Ptr raw(boost::make_shared<PointCloudT>());
     fromROS(*msg, *raw);
 
     if (raw->points.empty()) {
       ROS_ERROR("[LIMONCELLO] Raw PointCloud is empty!");
-      return;
-    }
-
-    if (not imu_calibrated_)
-      return;
-
-    if (state_buffer_.empty()) {
-      ROS_ERROR("[LIMONCELLO] No IMUs received");
       return;
     }
 
@@ -205,7 +200,7 @@ PROFC_NODE("LiDAR Callback")
   mtx_buffer_.unlock();
 
     if (start_stamp < interpolated.front().stamp or interpolated.size() == 0) {
-      // every points needs to have a state associated not in the past
+      // every point needs to have a state associated not in the past
       ROS_WARN("Not enough interpolated states for deskewing pointcloud \n");
       return;
     }

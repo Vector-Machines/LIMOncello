@@ -62,9 +62,10 @@ struct State {
     auto extrinsics = cfg.sensors.extrinsics;
 
     // Set initial state
+    Vec<3> grav_vec(0., 0., extrinsics.gravity * (extrinsics.NED ? 1 : -1));
     auto lidar2imu = Config::getInstance().sensors.extrinsics.imu2baselink.inverse()
                      * Config::getInstance().sensors.extrinsics.lidar2baselink;
-    Vec<3> grav_vec(0., 0., extrinsics.gravity * (extrinsics.NED ? 1 : -1));
+
                                                                 //                  Tangent (idx)
     X = BundleT(manif::SGal3d(extrinsics.imu2baselink.translation(),     //                    0
                               Eigen::Quaterniond(extrinsics.imu2baselink.linear()),         // 6
@@ -96,26 +97,26 @@ PROFC_NODE("predict")
     Mat<DoF> Adj, Jr; // Adjoint_X(u)^{-1}, J_r(u)  Sola-18, [https://arxiv.org/abs/1812.01537]
     BundleT X_tmp = X.plus(f(imu.lin_accel, imu.ang_vel) * dt, Adj, Jr);
     
-    // // S2 particular cases. No increment for g
-    Mat<3> AdjS2, JrS2;
-    S2::compose(g(), {0., 0., 0.}, AdjS2, JrS2);
+    // S2 particular cases. No increment for g
+      Mat<3> AdjS2, JrS2;
+      S2::compose(g(), {0., 0., 0.}, AdjS2, JrS2);
 
-    Adj.template bottomRightCorner<3, 3>() = AdjS2;
-    Jr.template bottomRightCorner<3, 3>() = JrS2;
+      Adj.template bottomRightCorner<3, 3>() = AdjS2;
+      Jr.template bottomRightCorner<3, 3>() = JrS2;
 
-    // // Projections: Left
-    Mat<2, 3> Jx;
-    S2::ominus(g(), g(), Jx);
+      // Projections: Left
+      Mat<2, 3> Jx;
+      S2::ominus(g(), g(), Jx);
 
-    Mat<DoFS2, DoF> left = Mat<DoFS2, DoF>::Identity();
-    left.template bottomRightCorner<2, 3>() = Jx;
-    
-    // // Projections: Right
-    Mat<3, 2> Ju;
-    S2::oplus(g(), {0., 0.}, {}, Ju);
+      Mat<DoFS2, DoF> left = Mat<DoFS2, DoF>::Identity();
+      left.template bottomRightCorner<2, 3>() = Jx;
+      
+      // Projections: Right
+      Mat<3, 2> Ju;
+      S2::oplus(g(), {0., 0.}, {}, Ju);
 
-    Mat<DoF, DoFS2> right = Mat<DoF, DoFS2>::Identity();
-    right.template bottomRightCorner<3, 2>() = Ju;
+      Mat<DoF, DoFS2> right = Mat<DoF, DoFS2>::Identity();
+      right.template bottomRightCorner<3, 2>() = Ju;
 
     Mat<DoFS2>           Fx = left * (Adj + Jr * df_dx(imu) * dt) * right; // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (26)
     Mat<DoFS2, DoFNoise> Fw = left * Adj * df_dw() * dt;                   // He-2021, [https://arxiv.org/abs/2102.03804] Eq. (27)
@@ -186,9 +187,6 @@ PROFC_NODE("update")
     if (map.size() == 0)
       return;
 
-    Planes first_planes;
-    int query_iters = cfg.ikfom.query_iters;
-
 // OBSERVATION MODEL
 
     auto h_model = [&](const State& s,
@@ -200,51 +198,49 @@ PROFC_NODE("update")
       std::vector<bool> chosen(N, false);
       Planes planes(N);
 
-      if (query_iters-- > 0) {
-        std::vector<int> indices(N);
-        std::iota(indices.begin(), indices.end(), 0);
-        
-        std::for_each(
-          std::execution::par_unseq,
-          indices.begin(),
-          indices.end(),
-          [&](int i) {
-            PointT pt = cloud->points[i];
-            Vec<3> p = pt.getVector3fMap().cast<double>();
-            Vec<3> g = s.isometry() * s.L2I_isometry() * p; // global coords 
+      std::vector<int> indices(N);
+      std::iota(indices.begin(), indices.end(), 0);
+      
+      std::for_each(
+        std::execution::par_unseq,
+        indices.begin(),
+        indices.end(),
+        [&](int i) {
+          PointT pt = cloud->points[i];
+          Vec<3> p = pt.getVector3fMap().cast<double>();
+          Vec<3> g = s.isometry() * s.L2I_isometry() * p; // global coords 
 
-            std::vector<pcl::PointXYZ> neighbors;
-            std::vector<float> pointSearchSqDis;
-            map.knn(pcl::PointXYZ(g(0), g(1), g(2)),
-                    cfg.ikfom.plane.points,
-                    neighbors,
-                    pointSearchSqDis);
-            
-            if (neighbors.size() < cfg.ikfom.plane.points 
-                or pointSearchSqDis.back() > cfg.ikfom.plane.max_sqrt_dist)
-                  return;
-            
-            Eigen::Vector4d p_abcd = Eigen::Vector4d::Zero();
-            if (not estimate_plane(p_abcd, neighbors, cfg.ikfom.plane.plane_threshold))
-              return;
-            
-            chosen[i] = true;
-            planes[i] = Plane(p, p_abcd);
-          }
-        ); // end for_each
-
-        first_planes.clear();
-
-        for (int i = 0; i < N; i++) {
-          if (chosen[i])
-            first_planes.push_back(planes[i]);        
+          std::vector<pcl::PointXYZ> neighbors;
+          std::vector<float> pointSearchSqDis;
+          map.knn(pcl::PointXYZ(g(0), g(1), g(2)),
+                  cfg.ikfom.plane.points,
+                  neighbors,
+                  pointSearchSqDis);
+          
+          if (neighbors.size() < cfg.ikfom.plane.points 
+              or pointSearchSqDis.back() > cfg.ikfom.plane.max_sqrt_dist)
+                return;
+          
+          Eigen::Vector4d p_abcd = Eigen::Vector4d::Zero();
+          if (not estimate_plane(p_abcd, neighbors, cfg.ikfom.plane.plane_threshold))
+            return;
+          
+          chosen[i] = true;
+          planes[i] = Plane(p, p_abcd);
         }
+      ); // end for_each
+
+      Planes valid_planes;
+
+      for (int i = 0; i < N; i++) {
+        if (chosen[i])
+          valid_planes.push_back(planes[i]);        
       }
 
-      H = Mat<>::Zero(first_planes.size(), DoFObs);
-      z = Mat<>::Zero(first_planes.size(), 1);
+      H = Mat<>::Zero(valid_planes.size(), DoFObs);
+      z = Mat<>::Zero(valid_planes.size(), 1);
 
-      std::vector<int> indices(first_planes.size());
+      indices.resize(valid_planes.size());
       std::iota(indices.begin(), indices.end(), 0);
 
       // For each plane, calculate its derivative and distance
@@ -253,7 +249,7 @@ PROFC_NODE("update")
         indices.begin(),
         indices.end(),
         [&](int i) {
-          Plane m = first_planes[i];
+          Plane m = valid_planes[i];
 
           // Differentiate w.r.t. SGal3
           Mat<3, manif::SGal3d::DoF> J_s;
@@ -300,9 +296,6 @@ PROFC_NODE("update")
 
         // d/db ((g oplus b) ominus g_pred) | b = 0
         Mat<DoFS2> J_inv = J_.topLeftCorner(DoFS2, DoFS2).inverse();
-        // Mat<2, 3> J_ab; S2::ominus(g(), g_pred, J_ab);
-        // Mat<3, 2>  J_b; S2::oplus(g(), S2::ominus(g_pred, g()), {}, J_b);
-        // J.template bottomLeftCorner<2, 2>() = J_ab * J_b;
         P = J_inv * P * J_inv.transpose(); // !! projection
 
       // Build K from blocks (numerical stability)

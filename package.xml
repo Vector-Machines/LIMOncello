@@ -7,7 +7,7 @@
   <author email="carlosp335@gmail.com">CPerezRuiz335</author>
   <maintainer email="carlosp335@gmail.com">CPerezRuiz335</maintainer>
 
-  <license>MIT</license>
+  <license>GPL-3.0</license>
 
   <buildtool_depend>catkin</buildtool_depend>
   <build_depend>std_msgs</build_depend>
