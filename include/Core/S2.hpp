@@ -12,6 +12,7 @@
 #include <manif/manif.h>
 #include <manif/SO3.h>
 
+#include "Utils/Config.hpp"
 
 // Based on He-2021, [https://arxiv.org/abs/2102.03804] Eq. (64-70)
 
@@ -47,8 +48,9 @@ namespace S2 {
 
 
   inline Matrix3x2d B(const Vector3d& x) {
-    Vector3d   e_i  = Vector3d::UnitZ();
-    Matrix3x2d E_jk = Matrix3d::Identity().leftCols<2>();
+    bool NED = Config::getInstance().sensors.extrinsics.NED;
+    Vector3d   e_i  = Vector3d::UnitZ() * (NED ? -1. : 1.);
+    Matrix3x2d E_jk = Matrix3d::Identity().leftCols<2>() * (NED ? -1. : 1.);
 
     Matrix3x2d out;
 

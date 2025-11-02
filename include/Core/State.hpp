@@ -90,33 +90,23 @@ struct State {
 PROFC_NODE("predict")
 
     Mat<DoF> Adj, Jr; // Adjoint_X(u)^{-1}, J_r(u)  Sola-18, [https://arxiv.org/abs/1812.01537]
-    std::cout << "lin_acc: " << imu.lin_accel.transpose() << std::endl;
-    std::cout << "Corrected lin_acc: " << (imu.lin_accel - b_a() /* -n_a */ - R().transpose()*g()).transpose()
-    << std::endl;
-    std::cout << "b_a:" << b_a().transpose() << std::endl;
-    std::cout << "grav  global: " << g() << std::endl;
-    std::cout << "Rotation: " << R().eulerAngles(0, 1, 2).transpose() * 180./M_PI << std::endl;
-    std::cout << "Extrinsics: " << L2I_isometry().matrix() << std::endl;
-    std::cout << "\n" << std::endl;
-
-
     BundleT X_tmp = X.plus(f(imu.lin_accel, imu.ang_vel) * dt, Adj, Jr);
     
-    // S2 particular cases. No increment for g
+    // // S2 particular cases. No increment for g
     Mat<3> AdjS2, JrS2;
     S2::compose(g(), {0., 0., 0.}, AdjS2, JrS2);
 
     Adj.template bottomRightCorner<3, 3>() = AdjS2;
     Jr.template bottomRightCorner<3, 3>() = JrS2;
 
-    // Projections: Left
+    // // Projections: Left
     Mat<2, 3> Jx;
     S2::ominus(g(), g(), Jx);
 
     Mat<DoFS2, DoF> left = Mat<DoFS2, DoF>::Identity();
     left.template bottomRightCorner<2, 3>() = Jx;
     
-    // Projections: Right
+    // // Projections: Right
     Mat<3, 2> Ju;
     S2::oplus(g(), {0., 0.}, {}, Ju);
 
@@ -163,7 +153,7 @@ PROFC_NODE("predict")
     Mat<DoF> out = Mat<DoF>::Zero();
 
     // velocity 
-    out.block<3, 3>(3,  6) = -R().transpose()*manif::skew(g()) * R(); // w.r.t R := d(R^-1*g)/dR * d(R^-1)/dR
+    out.block<3, 3>(3,  6) = -manif::skew(R().transpose()*g()); // w.r.t R := d(R^-1*g)/dR * d(R^-1)/dR
     out.block<3, 3>(3, 13) = -Mat<3>::Identity(); // w.r.t b_a 
     out.block<3, 3>(3, 16) = -R().transpose(); // w.r.t g
     // rotation
@@ -296,13 +286,12 @@ PROFC_NODE("update")
         Vec<DoFS2> dx = X.minus(X_predicted, J_).coeffs().head(DoFS2);
         dx.tail(2) = S2::ominus(g(), g_pred);
 
-        // // d/db ((g oplus b) ominus g_pred) | b = 0
-        // Mat<DoFS2> J = J_.topLeftCorner(DoFS2, DoFS2);
+        // d/db ((g oplus b) ominus g_pred) | b = 0
+        Mat<DoFS2> J_inv = J_.topLeftCorner(DoFS2, DoFS2).inverse();
         // Mat<2, 3> J_ab; S2::ominus(g(), g_pred, J_ab);
-        // Mat<3, 2>  J_b; S2::oplus(g(), {0., 0.}, {}, J_b);
-
+        // Mat<3, 2>  J_b; S2::oplus(g(), S2::ominus(g_pred, g()), {}, J_b);
         // J.template bottomLeftCorner<2, 2>() = J_ab * J_b;
-        // P = J.inverse() * P * J.inverse().transpose(); // !! projection
+        P = J_inv * P * J_inv.transpose(); // !! projection
 
       // Build K from blocks (numerical stability)
         Mat<DoFObs> HTH   = H.transpose() * H / R;
@@ -316,7 +305,7 @@ PROFC_NODE("update")
         KH.setZero();
         KH.template topLeftCorner<DoFS2, DoFObs>() = P_inv.template topLeftCorner<DoFS2, DoFObs>() * HTH;
 
-      dx = Kz + (KH - Mat<DoFS2>::Identity()) * dx; 
+      dx = Kz + (KH - Mat<DoFS2>::Identity()) * J_inv * dx; 
       
       // Update manif Bundle, left g unmodified
       Tangent tau = Tangent::Zero();

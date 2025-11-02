@@ -116,7 +116,7 @@ public:
           state_.b_w(gyro_avg);
 
         if (cfg.sensors.calibration.accel)
-          state_.b_a(accel_avg - state_.g());
+          state_.b_a(accel_avg - state_.R().transpose()*state_.g());
 
         imu_calibrated_ = true;
       }
