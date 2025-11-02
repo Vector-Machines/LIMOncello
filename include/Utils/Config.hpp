@@ -46,7 +46,7 @@ struct Config {
   	} imu;
 
   	struct {
-  		bool gravity;
+  		bool gravity_align;
   		bool accel;
   		bool gyro;
   		float time;
@@ -57,9 +57,9 @@ struct Config {
 
   	struct {
   		Eigen::Isometry3d imu2baselink;
-  		Eigen::Isometry3d imu2CoG;
-  		Eigen::Isometry3d lidar2imu;
-  		float gravity;
+  		Eigen::Isometry3d lidar2baselink;
+  		float gravity = 9.80665;
+		bool NED;
   	} extrinsics;
 
   	struct {

@@ -157,10 +157,10 @@ void fill_config(Config& cfg, ros::NodeHandle& nh) {
   nh.getParam("sensors/lidar/end_of_sweep", cfg.sensors.lidar.end_of_sweep);
   nh.getParam("sensors/imu/hz",             cfg.sensors.imu.hz);
 
-  nh.getParam("sensors/calibration/gravity", cfg.sensors.calibration.gravity);
-  nh.getParam("sensors/calibration/accel",   cfg.sensors.calibration.accel);
-  nh.getParam("sensors/calibration/gyro",    cfg.sensors.calibration.gyro);
-  nh.getParam("sensors/calibration/time",    cfg.sensors.calibration.time);
+  nh.getParam("sensors/calibration/gravity_align", cfg.sensors.calibration.gravity_align);
+  nh.getParam("sensors/calibration/accel",         cfg.sensors.calibration.accel);
+  nh.getParam("sensors/calibration/gyro",          cfg.sensors.calibration.gyro);
+  nh.getParam("sensors/calibration/time",          cfg.sensors.calibration.time);
 
   nh.getParam("sensors/time_offset", cfg.sensors.time_offset);
   nh.getParam("sensors/TAI_offset",  cfg.sensors.TAI_offset);
@@ -170,7 +170,7 @@ void fill_config(Config& cfg, ros::NodeHandle& nh) {
   nh.getParam("sensors/extrinsics/imu2baselink/t", tmp);
 
   cfg.sensors.extrinsics.imu2baselink.setIdentity();
-  cfg.sensors.extrinsics.imu2baselink.translate(Eigen::Vector3d(tmp[0], tmp[1], tmp[2]));
+  cfg.sensors.extrinsics.imu2baselink.translation() = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);
 
   nh.getParam("sensors/extrinsics/imu2baselink/R", tmp);
   Eigen::Matrix3d R_imu2baselink = (
@@ -179,37 +179,23 @@ void fill_config(Config& cfg, ros::NodeHandle& nh) {
       Eigen::AngleAxisd(tmp[2] * M_PI/180., Eigen::Vector3d::UnitZ())
     ).toRotationMatrix();
 
-  cfg.sensors.extrinsics.imu2baselink.rotate(R_imu2baselink);
+  cfg.sensors.extrinsics.imu2baselink.linear() = R_imu2baselink;
 
-  nh.getParam("sensors/extrinsics/imu2CoG/t", tmp);
+  nh.getParam("sensors/extrinsics/lidar2baselink/t", tmp);
 
-  cfg.sensors.extrinsics.imu2CoG.setIdentity();
-  cfg.sensors.extrinsics.imu2CoG.translate(Eigen::Vector3d(tmp[0], tmp[1], tmp[2]));
+  cfg.sensors.extrinsics.lidar2baselink.setIdentity();
+  cfg.sensors.extrinsics.lidar2baselink.translation() = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);
 
-  nh.getParam("sensors/extrinsics/imu2CoG/R", tmp);
-  Eigen::Matrix3d R_imu = (
-      Eigen::AngleAxisd(tmp[0] * M_PI/180., Eigen::Vector3d::UnitX()) *
-      Eigen::AngleAxisd(tmp[1] * M_PI/180., Eigen::Vector3d::UnitY()) *
-      Eigen::AngleAxisd(tmp[2] * M_PI/180., Eigen::Vector3d::UnitZ())
-    ).toRotationMatrix();
-
-  cfg.sensors.extrinsics.imu2CoG.rotate(R_imu);
-
-  nh.getParam("sensors/extrinsics/lidar2imu/t", tmp);
-
-  cfg.sensors.extrinsics.lidar2imu.setIdentity();
-  cfg.sensors.extrinsics.lidar2imu.translate(Eigen::Vector3d(tmp[0], tmp[1], tmp[2]));
-
-  nh.getParam("sensors/extrinsics/lidar2imu/R", tmp);
+  nh.getParam("sensors/extrinsics/lidar2baselink/R", tmp);
   Eigen::Matrix3d R_lidar = (
       Eigen::AngleAxisd(tmp[0] * M_PI/180., Eigen::Vector3d::UnitX()) *
       Eigen::AngleAxisd(tmp[1] * M_PI/180., Eigen::Vector3d::UnitY()) *
       Eigen::AngleAxisd(tmp[2] * M_PI/180., Eigen::Vector3d::UnitZ())
     ).toRotationMatrix();
 
-  cfg.sensors.extrinsics.lidar2imu.rotate(R_lidar);
+  cfg.sensors.extrinsics.lidar2baselink.linear() = R_lidar;
 
-  nh.getParam("sensors/extrinsics/gravity", cfg.sensors.extrinsics.gravity);
+  nh.getParam("sensors/extrinsics/NED", cfg.sensors.extrinsics.NED);
 
   nh.getParam("sensors/intrinsics/accel_bias", tmp);
   cfg.sensors.intrinsics.accel_bias = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);

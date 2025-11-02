@@ -55,9 +55,10 @@ public:
 
     Config& cfg = Config::getInstance();
 
-    imu_calibrated_ = not (cfg.sensors.calibration.gravity
+    imu_calibrated_ = not (cfg.sensors.calibration.gravity_align
                            or cfg.sensors.calibration.accel
-                           or cfg.sensors.calibration.gyro); 
+                           or cfg.sensors.calibration.gyro)
+                      or cfg.sensors.calibration.time <= 0.; 
 
     ioctree_.setBucketSize(cfg.ioctree.bucket_size);
     ioctree_.setDownsample(cfg.ioctree.downsample);
@@ -91,7 +92,6 @@ public:
       static int N(0);
       static Eigen::Vector3d gyro_avg(0., 0., 0.);
       static Eigen::Vector3d accel_avg(0., 0., 0.);
-      static Eigen::Vector3d grav_vec(0., 0., cfg.sensors.extrinsics.gravity);
 
       if ((imu.stamp - first_imu_stamp_) < cfg.sensors.calibration.time) {
         gyro_avg  += imu.ang_vel;
@@ -102,18 +102,21 @@ public:
         gyro_avg /= N;
         accel_avg /= N;
 
-        auto R = cfg.sensors.extrinsics.imu2CoG.linear();
+        if (cfg.sensors.calibration.gravity_align) {
+          Eigen::Vector3d g_m = (accel_avg - state_.b_a()).normalized(); 
+                          g_m *= cfg.sensors.extrinsics.gravity;
+          
+          Eigen::Vector3d g_b = state_.quat().conjugate() * state_.g();
+          Eigen::Quaterniond dq = Eigen::Quaterniond::FromTwoVectors(g_b, g_m);
 
-        if (cfg.sensors.calibration.gravity) {
-          grav_vec = accel_avg.normalized() * abs(cfg.sensors.extrinsics.gravity);
-          state_.g(R * -grav_vec);
+          state_.quat((state_.quat() * dq).normalized());
         }
         
         if (cfg.sensors.calibration.gyro)
-          state_.b_w(R * gyro_avg);
+          state_.b_w(gyro_avg);
 
         if (cfg.sensors.calibration.accel)
-          state_.b_a(R *(accel_avg - grav_vec));
+          state_.b_a(accel_avg - state_.g());
 
         imu_calibrated_ = true;
       }
@@ -125,8 +128,6 @@ public:
         ROS_ERROR("IMU timestamps not correct");
 
       dt = (dt < 0 or dt >= imu.stamp) ? 1./cfg.sensors.imu.hz : dt;
-
-      imu = imu2baselink(imu, dt);
 
       // Correct acceleration
       imu.lin_accel = cfg.sensors.intrinsics.sm * imu.lin_accel;

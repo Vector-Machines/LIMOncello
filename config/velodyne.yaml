@@ -22,7 +22,7 @@ sensors:
     hz: 400
 
   calibration:  # automatic IMU calibration (if all set to false, no calibration will be done)
-    gravity: true           # estimate gravity vector
+    gravity_align: true     # estimate gravity vector and align initial robot's rotation
     accel: true             # estimate lin. accel. bias
     gyro: true              # estimate ang. vel. bias
     time: 3.               # time to estimate (during this time, the 
@@ -33,25 +33,23 @@ sensors:
   TAI_offset: 0.
 
   extrinsics:
+    NED: true # North, East, Down convention for IMU coordinates (NEU by default)
+               # Iintial position and orientation of the robot is 
+               # imu2baselink * (NEU or NED), w.r.t to the world frame (NEU)
+               # This only flips the gravity sign, imu2baselink is the rotation
+               # that aligns (x, y) axes
+
     imu2baselink:
       t: [0., 0., 0.1] # (x, y, z) [meters]
       R: [0., 0., 0.]  # roll, pitch, yaw [deg]
 
-    imu2CoG:
-      t: [0., 0., 0.] # (x, y, z) [meters]
-      R: [0., 0., 0.]  # roll, pitch, yaw [deg]
-
-    lidar2imu:
+    lidar2baselink:
       t: [1.10, 0.0, 0.0] # (x, y, z) [meters]
       R: [0.0, -3.5, 0.0] # roll, pitch, yaw [deg]
-
-      # Extrinsics between the LiDAR and the IMU can be estimated
-      # but an initial guess needs to be supplied. Acceleration are
-      # corrected with imu2CoG extrinsics, and for visualization point
-      # clouds are published w.r.t imu2baselink*lidar2imu frame.
     
-    gravity: 9.80304
-
+    # NOTE: Initial lidar2imu extrinsics are obtained from 
+    # imu2baslink and lidar2baselink
+    
   intrinsics:
     accel_bias: [ 0.0001, 0.0001, 0.0001 ]  # [m/s^2]
     gyro_bias:  [ 0.0001, 0.0001, 0.0001 ]  # [rad/s]
@@ -104,7 +102,7 @@ IKFoM:  # Iterative Kalman Filter on Manifolds lib
     accel: 1.53e-2       # [rad^2]
     bias_gyro: 1.54e-5   # [m^2/s^2 * sqrt(s)]
     bias_accel: 3.38e-4  # [rad/s * sqrt(s)]
-    initial_cov: 0.001     # Initial covariance for every element in the state
+    initial_cov: 0.01     # Initial covariance for every element in the state
                          # i.e., P = I * initial_cov 
   
   plane:                     # plane features for point to plane ICP

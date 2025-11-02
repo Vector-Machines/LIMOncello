@@ -58,30 +58,26 @@ struct State {
 
   State() : stamp(-1.0) { 
     Config& cfg = Config::getInstance();
-    
-    Vec<3> p = cfg.sensors.extrinsics.imu2baselink.translation();
-    Vec<3> th = cfg.sensors.extrinsics.imu2baselink.linear().eulerAngles(0, 1, 2);
+    auto extrinsics = cfg.sensors.extrinsics;
 
+    // Set initial state
+    Vec<3> grav_vec(0., 0., extrinsics.gravity * (extrinsics.NED ? 1 : -1));
                                                                 //                  Tangent (idx)
-    X = BundleT(manif::SGal3d(p.x(),  p.y(),  p.z(),            // x y z                       0
-                              th.x(), th.y(), th.z(),           // roll pitch yaw              6
-                              0., 0., 0.,                       // vx, vy, vz                  3
+    X = BundleT(manif::SGal3d(extrinsics.imu2baselink.translation(),     //                    0
+                              Eigen::Quaterniond(extrinsics.imu2baselink.linear()),         // 6
+                              {0., 0., 0.},                     // vx, vy, vz                  3
                               0.),                              // delta t                     9
                 manif::R3d(cfg.sensors.intrinsics.gyro_bias),   // b_w                        10
                 manif::R3d(cfg.sensors.intrinsics.accel_bias),  // b_a                        13
-                manif::R3d(Vec<3>::UnitZ()      
-                           * -cfg.sensors.extrinsics.gravity)); // g                          16
+                manif::R3d(grav_vec));                          // g                          16
 
     P.setIdentity();
     P *= cfg.ikfom.covariance.initial_cov;
 
-    P.template bottomRightCorner<2+6, 2+6>() *= 0.2/cfg.ikfom.covariance.initial_cov;
-    // P.template topLeftCorner<6, 6>() *= 0.01/cfg.ikfom.covariance.initial_cov;
-
     w.setZero();
     a.setZero();
 
-    // Control signal noise (never changes)
+    // Control signal noise covariance (never changes)
     Q.setZero();
  
     Q.block<3, 3>(0, 0) = cfg.ikfom.covariance.gyro       * Eigen::Matrix3d::Identity(); // n_w
@@ -94,6 +90,16 @@ struct State {
 PROFC_NODE("predict")
 
     Mat<DoF> Adj, Jr; // Adjoint_X(u)^{-1}, J_r(u)  Sola-18, [https://arxiv.org/abs/1812.01537]
+    std::cout << "lin_acc: " << imu.lin_accel.transpose() << std::endl;
+    std::cout << "Corrected lin_acc: " << (imu.lin_accel - b_a() /* -n_a */ - R().transpose()*g()).transpose()
+    << std::endl;
+    std::cout << "b_a:" << b_a().transpose() << std::endl;
+    std::cout << "grav  global: " << g() << std::endl;
+    std::cout << "Rotation: " << R().eulerAngles(0, 1, 2).transpose() * 180./M_PI << std::endl;
+    std::cout << "Extrinsics: " << L2I_isometry().matrix() << std::endl;
+    std::cout << "\n" << std::endl;
+
+
     BundleT X_tmp = X.plus(f(imu.lin_accel, imu.ang_vel) * dt, Adj, Jr);
     
     // S2 particular cases. No increment for g
@@ -144,7 +150,7 @@ PROFC_NODE("predict")
 
     Tangent u = Tangent::Zero();
     u.element<0>().coeffs() << 0., 0., 0., 
-                               lin_acc - b_a() /* -n_a */ + R().transpose()*g(),
+                               lin_acc - b_a() /* -n_a */ - R().transpose()*g(),
                                ang_vel - b_w() /* -n_w */,
                                1.;
     // u.element<2>().coeffs() = n_{b_w} 
@@ -157,9 +163,9 @@ PROFC_NODE("predict")
     Mat<DoF> out = Mat<DoF>::Zero();
 
     // velocity 
-    out.block<3, 3>(3,  6) = -R().transpose()*manif::skew(g()) * -R(); // w.r.t R := d(R^-1*g)/dR * d(R^-1)/dR
+    out.block<3, 3>(3,  6) = -R().transpose()*manif::skew(g()) * R(); // w.r.t R := d(R^-1*g)/dR * d(R^-1)/dR
     out.block<3, 3>(3, 13) = -Mat<3>::Identity(); // w.r.t b_a 
-    out.block<3, 3>(3, 16) =  R().transpose(); // w.r.t g
+    out.block<3, 3>(3, 16) = -R().transpose(); // w.r.t g
     // rotation
     out.block<3, 3>(6, 10) = -Mat<3>::Identity(); // w.r.t b_w
 
@@ -290,13 +296,13 @@ PROFC_NODE("update")
         Vec<DoFS2> dx = X.minus(X_predicted, J_).coeffs().head(DoFS2);
         dx.tail(2) = S2::ominus(g(), g_pred);
 
-        // d/db ((g oplus b) ominus g_pred) | b = 0
-        Mat<DoFS2> J = J_.topLeftCorner(DoFS2, DoFS2);
-        Mat<2, 3> J_ab; S2::ominus(g(), g_pred, J_ab);
-        Mat<3, 2>  J_b; S2::oplus(g(), {0., 0.}, {}, J_b);
+        // // d/db ((g oplus b) ominus g_pred) | b = 0
+        // Mat<DoFS2> J = J_.topLeftCorner(DoFS2, DoFS2);
+        // Mat<2, 3> J_ab; S2::ominus(g(), g_pred, J_ab);
+        // Mat<3, 2>  J_b; S2::oplus(g(), {0., 0.}, {}, J_b);
 
-        J.template bottomLeftCorner<2, 2>() = J_ab * J_b;
-        P = J.inverse() * P * J.inverse().transpose(); // !! projection
+        // J.template bottomLeftCorner<2, 2>() = J_ab * J_b;
+        // P = J.inverse() * P * J.inverse().transpose(); // !! projection
 
       // Build K from blocks (numerical stability)
         Mat<DoFObs> HTH   = H.transpose() * H / R;
@@ -310,7 +316,7 @@ PROFC_NODE("update")
         KH.setZero();
         KH.template topLeftCorner<DoFS2, DoFObs>() = P_inv.template topLeftCorner<DoFS2, DoFObs>() * HTH;
 
-      dx = Kz + (KH - Mat<DoFS2>::Identity()) * J.inverse() * dx; 
+      dx = Kz + (KH - Mat<DoFS2>::Identity()) * dx; 
       
       // Update manif Bundle, left g unmodified
       Tangent tau = Tangent::Zero();
@@ -323,13 +329,10 @@ PROFC_NODE("update")
       if ((dx.array().abs() <= cfg.ikfom.tolerance).all())
         break;
 
-    } while(i++ < cfg.ikfom.max_iters);
+    } while (i++ < cfg.ikfom.max_iters);
 
-    X = X;
     P = (Mat<DoFS2>::Identity() - KH) * P;
-
-    std::cout << P << std::endl;
-
+    X = X;
   }
 
 
@@ -351,7 +354,8 @@ PROFC_NODE("update")
   }
 
   inline Eigen::Isometry3d L2I_isometry() const {
-    return Config::getInstance().sensors.extrinsics.lidar2imu;
+    return Config::getInstance().sensors.extrinsics.imu2baselink.inverse()
+           * Config::getInstance().sensors.extrinsics.lidar2baselink;
   }
 
   inline Eigen::Isometry3d L2baselink_isometry() const {
@@ -359,9 +363,10 @@ PROFC_NODE("update")
   }
 
 // Setters
-  void b_w(const Vec<3>& in) { X.element<1>() = manif::R3d(in); }
-  void b_a(const Vec<3>& in) { X.element<2>() = manif::R3d(in); }
-  void g(const   Vec<3>& in) { X.element<3>() = manif::R3d(in); }
+  void quat(const Eigen::Quaterniond& in) { X.element<0>() = manif::SGal3d(p(), in, v(), t()); } 
+  void b_w (const Vec<3>& in)             { X.element<1>() = manif::R3d(in);                   }
+  void b_a (const Vec<3>& in)             { X.element<2>() = manif::R3d(in);                   }
+  void g   (const Vec<3>& in)             { X.element<3>() = manif::R3d(in);                   }
 
 };
 
