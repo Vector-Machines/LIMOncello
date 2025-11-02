@@ -72,6 +72,23 @@ sensor_msgs::PointCloud2 toROS(const PointCloudT::Ptr& cloud) {
   return out;
 }
 
+sensor_msgs::Imu toROS(const Imu& in) {
+  sensor_msgs::Imu out;
+
+  out.header.stamp = ros::Time::now();
+  out.header.frame_id = Config::getInstance().topics.frame_id;
+
+  out.angular_velocity.x = in.ang_vel(0);
+  out.angular_velocity.y = in.ang_vel(1);
+  out.angular_velocity.z = in.ang_vel(2);
+
+  out.linear_acceleration.x = in.lin_accel(0);
+  out.linear_acceleration.y = in.lin_accel(1);
+  out.linear_acceleration.z = in.lin_accel(2);
+
+  return out;
+}
+
 nav_msgs::Odometry toROS(State& state) {
 
   Config& cfg = Config::getInstance();
@@ -99,6 +116,26 @@ nav_msgs::Odometry toROS(State& state) {
   return out;
 }
 
+geometry_msgs::TransformStamped toTF(State& state) {
+  
+  geometry_msgs::Transform msg;
+  msg.translation.x = state.p().x();
+  msg.translation.y = state.p().y();
+  msg.translation.z = state.p().z();
+
+  msg.rotation.x = state.quat().x();
+  msg.rotation.y = state.quat().y();
+  msg.rotation.z = state.quat().z();
+  msg.rotation.w = state.quat().w();
+  
+  geometry_msgs::TransformStamped transform_msg;
+  transform_msg.header.stamp = ros::Time::now();
+  transform_msg.header.frame_id = Config::getInstance().topics.frame_id;
+  transform_msg.child_frame_id = "base_link";
+  transform_msg.transform = msg;
+
+  return transform_msg;
+}
 
 // Function to fill configuration using ROS NodeHandle
 void fill_config(Config& cfg, ros::NodeHandle& nh) {
@@ -120,34 +157,33 @@ void fill_config(Config& cfg, ros::NodeHandle& nh) {
   nh.getParam("sensors/lidar/end_of_sweep", cfg.sensors.lidar.end_of_sweep);
   nh.getParam("sensors/imu/hz",             cfg.sensors.imu.hz);
 
-  nh.getParam("sensors/calibration/gravity", cfg.sensors.calibration.gravity);
-  nh.getParam("sensors/calibration/accel",   cfg.sensors.calibration.accel);
-  nh.getParam("sensors/calibration/gyro",    cfg.sensors.calibration.gyro);
-  nh.getParam("sensors/calibration/time",    cfg.sensors.calibration.time);
+  nh.getParam("sensors/calibration/gravity_align", cfg.sensors.calibration.gravity_align);
+  nh.getParam("sensors/calibration/accel",         cfg.sensors.calibration.accel);
+  nh.getParam("sensors/calibration/gyro",          cfg.sensors.calibration.gyro);
+  nh.getParam("sensors/calibration/time",          cfg.sensors.calibration.time);
 
   nh.getParam("sensors/time_offset", cfg.sensors.time_offset);
-  nh.getParam("sensors/TAI_offset",  cfg.sensors.TAI_offset);
 
 
   std::vector<double> tmp;
   nh.getParam("sensors/extrinsics/imu2baselink/t", tmp);
 
-  cfg.sensors.extrinsics.imu2baselink_T.setIdentity();
-  cfg.sensors.extrinsics.imu2baselink_T.translate(Eigen::Vector3d(tmp[0], tmp[1], tmp[2]));
+  cfg.sensors.extrinsics.imu2baselink.setIdentity();
+  cfg.sensors.extrinsics.imu2baselink.translation() = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);
 
   nh.getParam("sensors/extrinsics/imu2baselink/R", tmp);
-  Eigen::Matrix3d R_imu = (
+  Eigen::Matrix3d R_imu2baselink = (
       Eigen::AngleAxisd(tmp[0] * M_PI/180., Eigen::Vector3d::UnitX()) *
       Eigen::AngleAxisd(tmp[1] * M_PI/180., Eigen::Vector3d::UnitY()) *
       Eigen::AngleAxisd(tmp[2] * M_PI/180., Eigen::Vector3d::UnitZ())
     ).toRotationMatrix();
 
-  cfg.sensors.extrinsics.imu2baselink_T.rotate(R_imu);
+  cfg.sensors.extrinsics.imu2baselink.linear() = R_imu2baselink;
 
   nh.getParam("sensors/extrinsics/lidar2baselink/t", tmp);
 
-  cfg.sensors.extrinsics.lidar2baselink_T.setIdentity();
-  cfg.sensors.extrinsics.lidar2baselink_T.translate(Eigen::Vector3d(tmp[0], tmp[1], tmp[2]));
+  cfg.sensors.extrinsics.lidar2baselink.setIdentity();
+  cfg.sensors.extrinsics.lidar2baselink.translation() = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);
 
   nh.getParam("sensors/extrinsics/lidar2baselink/R", tmp);
   Eigen::Matrix3d R_lidar = (
@@ -156,9 +192,9 @@ void fill_config(Config& cfg, ros::NodeHandle& nh) {
       Eigen::AngleAxisd(tmp[2] * M_PI/180., Eigen::Vector3d::UnitZ())
     ).toRotationMatrix();
 
-  cfg.sensors.extrinsics.lidar2baselink_T.rotate(R_lidar);
+  cfg.sensors.extrinsics.lidar2baselink.linear() = R_lidar;
 
-  nh.getParam("sensors/extrinsics/gravity", cfg.sensors.extrinsics.gravity);
+  nh.getParam("sensors/extrinsics/NED", cfg.sensors.extrinsics.NED);
 
   nh.getParam("sensors/intrinsics/accel_bias", tmp);
   cfg.sensors.intrinsics.accel_bias = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);
@@ -179,6 +215,12 @@ void fill_config(Config& cfg, ros::NodeHandle& nh) {
   nh.getParam("filters/min_distance/active", cfg.filters.min_distance.active);
   nh.getParam("filters/min_distance/value",  cfg.filters.min_distance.value);
 
+  nh.getParam("filters/crop_box/active", cfg.filters.crop_box.active);
+  nh.getParam("filters/crop_box/min", tmp);
+  cfg.filters.crop_box.min = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);
+  nh.getParam("filters/crop_box/max", tmp);
+  cfg.filters.crop_box.max = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);
+
   nh.getParam("filters/fov/active", cfg.filters.fov.active);
   nh.getParam("filters/fov/value",  cfg.filters.fov.value);
   cfg.filters.fov.value *= M_PI/360.;
@@ -192,12 +234,14 @@ void fill_config(Config& cfg, ros::NodeHandle& nh) {
   nh.getParam("IKFoM/max_iters",           cfg.ikfom.max_iters);
   nh.getParam("IKFoM/tolerance",           cfg.ikfom.tolerance);
   nh.getParam("IKFoM/lidar_noise",         cfg.ikfom.lidar_noise);
+  nh.getParam("IKFoM/estimate_extrinsics", cfg.ikfom.estimate_extrinsics);
 
   
-  nh.getParam("IKFoM/covariance/gyro",       cfg.ikfom.covariance.gyro);
-  nh.getParam("IKFoM/covariance/accel",      cfg.ikfom.covariance.accel);
-  nh.getParam("IKFoM/covariance/bias_gyro",  cfg.ikfom.covariance.bias_gyro);
-  nh.getParam("IKFoM/covariance/bias_accel", cfg.ikfom.covariance.bias_accel);
+  nh.getParam("IKFoM/covariance/gyro",        cfg.ikfom.covariance.gyro);
+  nh.getParam("IKFoM/covariance/accel",       cfg.ikfom.covariance.accel);
+  nh.getParam("IKFoM/covariance/bias_gyro",   cfg.ikfom.covariance.bias_gyro);
+  nh.getParam("IKFoM/covariance/bias_accel",  cfg.ikfom.covariance.bias_accel);
+  nh.getParam("IKFoM/covariance/initial_cov", cfg.ikfom.covariance.initial_cov);
 
   nh.getParam("IKFoM/plane/points",          cfg.ikfom.plane.points);
   nh.getParam("IKFoM/plane/max_sqrt_dist",   cfg.ikfom.plane.max_sqrt_dist);

@@ -85,10 +85,10 @@ Here, the configuration file for `LIMOncello` is explained.
 | calibration/time                 | s        | Duration for which robot must remain stationary to perform above calibrations         |
 | time_offset                      | –        | Whether to account for sync offset between IMU and LiDAR                              |
 | TAI_offset                       | s        | Time offset (TAI) to apply to point cloud timestamps                                  |
-| extrinsics/imu2baselink/t        | m        | Translation of IMU relative to base_link                                              |
-| extrinsics/imu2baselink/R        | deg      | Rotation (roll, pitch, yaw) of IMU relative to base_link                              |
-| extrinsics/lidar2baselink/t      | m        | Translation of LiDAR relative to base_link                                            |
-| extrinsics/lidar2baselink/R      | deg      | Rotation (roll, pitch, yaw) of LiDAR relative to base_link                            |
+| extrinsics/imu2CoG/t             | m        | Translation of IMU relative to the Center of Gravity (CoG)                            |
+| extrinsics/imu2CoG/R             | deg      | Rotation (roll, pitch, yaw) of IMU relative to the Center of Gravity (CoG)            |
+| extrinsics/lidar2imu/t           | m        | Translation of LiDAR relative to the IMU                                              |
+| extrinsics/lidar2imu/R           | deg      | Rotation (roll, pitch, yaw) of LiDAR relative to the IMU                              |
 | extrinsics/gravity               | m/s²     | Default gravity magnitude if no gravity calibration is performed                      |
 | intrinsics/accel_bias            | m/s²     | Default accelerometer bias vector                                                     |
 | intrinsics/gyro_bias             | rad/s    | Default gyroscope bias vector                                                         |
@@ -104,10 +104,10 @@ Here, the configuration file for `LIMOncello` is explained.
 | IKFoM/max_iters                  | –        | Maximum number of IESEKF updates                                                      |
 | IKFoM/tolerance                  | –        | Convergence tolerance for IESEKF                                                      |
 | IKFoM/lidar_noise                | –        | LiDAR measurement noise parameter                                                     |
-| IKFoM/covariance/gyro            | m²/s²    | Gyroscope measurement covariance                                                      |
-| IKFoM/covariance/accel           | rad²     | Accelerometer measurement covariance                                                  |
-| IKFoM/covariance/bias_gyro       | m²/s²·√s | Gyroscope bias covariance                                                             |
-| IKFoM/covariance/bias_accel      | rad/s·√s | Accelerometer bias covariance                                                         |
+| IKFoM/covariance/gyro            | rad²     | Gyroscope measurement covariance                                                      |
+| IKFoM/covariance/accel           | m²/s²    | Accelerometer measurement covariance                                                  |
+| IKFoM/covariance/bias_gyro       | rad/s·√s | Gyroscope bias covariance                                                             |
+| IKFoM/covariance/bias_accel      | m²/s²·√s | Accelerometer bias covariance                                                         |
 | IKFoM/plane/points               | –        | Number of points used to fit each plane feature                                       |
 | IKFoM/plane/max_sqrt_dist        | m        | Maximum distance from query to any point in the plane (if exceeded, plane is invalid) |
 | IKFoM/plane/plane_threshold      | m        | Maximum distance from any point to its plane to be considered valid                   |
