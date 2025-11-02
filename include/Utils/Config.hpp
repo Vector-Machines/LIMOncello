@@ -53,7 +53,6 @@ struct Config {
   	} calibration;
 
   	bool time_offset;
-	float TAI_offset;
 
   	struct {
   		Eigen::Isometry3d imu2baselink;

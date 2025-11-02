@@ -131,7 +131,7 @@ geometry_msgs::TransformStamped toTF(State& state) {
   geometry_msgs::TransformStamped transform_msg;
   transform_msg.header.stamp = ros::Time::now();
   transform_msg.header.frame_id = Config::getInstance().topics.frame_id;
-  transform_msg.child_frame_id = "car";
+  transform_msg.child_frame_id = "base_link";
   transform_msg.transform = msg;
 
   return transform_msg;
@@ -163,7 +163,6 @@ void fill_config(Config& cfg, ros::NodeHandle& nh) {
   nh.getParam("sensors/calibration/time",          cfg.sensors.calibration.time);
 
   nh.getParam("sensors/time_offset", cfg.sensors.time_offset);
-  nh.getParam("sensors/TAI_offset",  cfg.sensors.TAI_offset);
 
 
   std::vector<double> tmp;

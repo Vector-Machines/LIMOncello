@@ -174,7 +174,7 @@ PROFC_NODE("LiDAR Callback")
     }
 
     PointTime point_time = point_time_func();
-    double sweep_time = msg->header.stamp.toSec() + cfg.sensors.TAI_offset;
+    double sweep_time = msg->header.stamp.toSec();
     
     double offset = 0.0;
     if (cfg.sensors.time_offset) { // automatic sync (not precise!)
@@ -214,7 +214,7 @@ PROFC_NODE("LiDAR Callback")
 
     PointCloudT::Ptr deskewed    = deskew(raw, state_, interpolated, offset, sweep_time);
     PointCloudT::Ptr downsampled = voxel_grid(deskewed);
-    PointCloudT::Ptr filtered    = filter(downsampled, state_.L2baselink_isometry());
+    PointCloudT::Ptr filtered    = filter(downsampled, state_.isometry() * state_.L2I_isometry());
 
     if (filtered->points.empty()) {
       ROS_ERROR("[LIMONCELLO] Filtered & downsampled cloud is empty!");
@@ -224,7 +224,7 @@ PROFC_NODE("LiDAR Callback")
 
     state_.update(filtered, ioctree_);
 
-    Eigen::Isometry3f T = state_.L2baselink_isometry().cast<float>();
+    Eigen::Isometry3f T = (state_.isometry() * state_.L2I_isometry()).cast<float>();
   mtx_state_.unlock();
 
     PointCloudT::Ptr global(boost::make_shared<PointCloudT>());

@@ -28,6 +28,7 @@ struct State {
 
   using BundleT = manif::Bundle<double,
       manif::SGal3,  // position & rotation & velocity & t
+      manif::SE3,    // extrinsics
       manif::R3,     // angular bias
       manif::R3,     // acceleartion bias
       manif::R3      // gravity
@@ -42,10 +43,10 @@ struct State {
   using Vec = Eigen::Matrix<double, N, 1>;
 
 
-  static constexpr int DoF = BundleT::DoF;            // DoF whole state
-  static constexpr int DoFS2 = DoF-1;                   // DoF g as S2
-  static constexpr int DoFNoise = 4*3;                // b_w, b_a, n_{b_w}, n_{b_a}
-  static constexpr int DoFObs = manif::SGal3d::DoF;   // DoF obsevation equation
+  static constexpr int DoF = BundleT::DoF;  // DoF whole state
+  static constexpr int DoFS2 = DoF-1;       // DoF g as S2
+  static constexpr int DoFNoise = 4*3;      // b_w, b_a, n_{b_w}, n_{b_a}
+  static constexpr int DoFObs = manif::SGal3d::DoF + manif::SE3d::DoF;   // DoF obsevation equation
 
   BundleT X;
   Mat<DoFS2> P;
@@ -61,15 +62,18 @@ struct State {
     auto extrinsics = cfg.sensors.extrinsics;
 
     // Set initial state
+    auto lidar2imu = Config::getInstance().sensors.extrinsics.imu2baselink.inverse()
+                     * Config::getInstance().sensors.extrinsics.lidar2baselink;
     Vec<3> grav_vec(0., 0., extrinsics.gravity * (extrinsics.NED ? 1 : -1));
                                                                 //                  Tangent (idx)
     X = BundleT(manif::SGal3d(extrinsics.imu2baselink.translation(),     //                    0
                               Eigen::Quaterniond(extrinsics.imu2baselink.linear()),         // 6
                               {0., 0., 0.},                     // vx, vy, vz                  3
                               0.),                              // delta t                     9
-                manif::R3d(cfg.sensors.intrinsics.gyro_bias),   // b_w                        10
-                manif::R3d(cfg.sensors.intrinsics.accel_bias),  // b_a                        13
-                manif::R3d(grav_vec));                          // g                          16
+                manif::SE3d(lidar2imu),                         // isometry                   10
+                manif::R3d(cfg.sensors.intrinsics.gyro_bias),   // b_w                        16
+                manif::R3d(cfg.sensors.intrinsics.accel_bias),  // b_a                        19
+                manif::R3d(grav_vec));                          // g                          22
 
     P.setIdentity();
     P *= cfg.ikfom.covariance.initial_cov;
@@ -143,8 +147,8 @@ PROFC_NODE("predict")
                                lin_acc - b_a() /* -n_a */ - R().transpose()*g(),
                                ang_vel - b_w() /* -n_w */,
                                1.;
-    // u.element<2>().coeffs() = n_{b_w} 
-    // u.element<3>().coeffs() = n_{b_a}
+    // u.element<3>().coeffs() = n_{b_w} 
+    // u.element<4>().coeffs() = n_{b_a}
 
     return u;
   }
@@ -154,10 +158,10 @@ PROFC_NODE("predict")
 
     // velocity 
     out.block<3, 3>(3,  6) = -manif::skew(R().transpose()*g()); // w.r.t R := d(R^-1*g)/dR * d(R^-1)/dR
-    out.block<3, 3>(3, 13) = -Mat<3>::Identity(); // w.r.t b_a 
-    out.block<3, 3>(3, 16) = -R().transpose(); // w.r.t g
+    out.block<3, 3>(3, 19) = -Mat<3>::Identity(); // w.r.t b_a 
+    out.block<3, 3>(3, 22) = -R().transpose(); // w.r.t g
     // rotation
-    out.block<3, 3>(6, 10) = -Mat<3>::Identity(); // w.r.t b_w
+    out.block<3, 3>(6, 16) = -Mat<3>::Identity(); // w.r.t b_w
 
     return out;
   }
@@ -166,10 +170,10 @@ PROFC_NODE("predict")
     // w = (n_w, n_a, n_{b_w}, n_{b_a})
     Mat<DoF, DoFNoise> out = Mat<DoF, DoFNoise>::Zero();
 
-    out.block<3, 3>( 3, 3) = -Mat<3>::Identity(); // w.r.t n_a
     out.block<3, 3>( 6, 0) = -Mat<3>::Identity(); // w.r.t n_w
-    out.block<3, 3>(10, 6) =  Mat<3>::Identity(); // w.r.t n_{b_w}
-    out.block<3, 3>(13, 9) =  Mat<3>::Identity(); // w.r.t n_{b_a}
+    out.block<3, 3>( 3, 3) = -Mat<3>::Identity(); // w.r.t n_a
+    out.block<3, 3>(16, 6) =  Mat<3>::Identity(); // w.r.t n_{b_w}
+    out.block<3, 3>(19, 9) =  Mat<3>::Identity(); // w.r.t n_{b_a}
     
     return out;
   }
@@ -257,6 +261,14 @@ PROFC_NODE("update")
 
           H.block<1, manif::SGal3d::DoF>(i, 0) << m.n.head(3).transpose() * J_s;
 
+          // Differentiate w.r.t. SE3
+          if (cfg.ikfom.estimate_extrinsics) {
+            Eigen::Matrix<double, 3, manif::SE3d::DoF> J_e;
+            manif::SE3d(isometry() * L2I_isometry()).act(m.p, J_e);
+            
+            H.block<1, manif::SE3d::DoF>(i, manif::SGal3d::DoF) << m.n.head(3).transpose() * J_e;
+          }
+
           z(i) = -dist2plane(m.n, g);
         }
       );
@@ -274,7 +286,7 @@ PROFC_NODE("update")
 
     double R = cfg.ikfom.lidar_noise;
 
-    Vec<3> g_pred = X_predicted.element<3>().coeffs();
+    Vec<3> g_pred = X_predicted.element<4>().coeffs();
 
     int i(0);
 
@@ -294,7 +306,7 @@ PROFC_NODE("update")
         P = J_inv * P * J_inv.transpose(); // !! projection
 
       // Build K from blocks (numerical stability)
-        Mat<DoFObs> HTH   = H.transpose() * H / R;
+        Mat<DoFObs> HTH = H.transpose() * H / R;
         
         Mat<DoFS2>  P_inv = P.inverse();
         P_inv.template topLeftCorner<DoFObs, DoFObs>() += HTH;
@@ -331,9 +343,9 @@ PROFC_NODE("update")
   inline Eigen::Quaterniond quat() const { return X.element<0>().quat();                    }
   inline Vec<3>                v() const { return X.element<0>().linearVelocity();          }
   inline double                t() const { return X.element<0>().t();                       }
-  inline Vec<3>              b_w() const { return X.element<1>().coeffs();                  }
-  inline Vec<3>              b_a() const { return X.element<2>().coeffs();                  }
-  inline Vec<3>                g() const { return X.element<3>().coeffs();                  }
+  inline Vec<3>              b_w() const { return X.element<2>().coeffs();                  }
+  inline Vec<3>              b_a() const { return X.element<3>().coeffs();                  }
+  inline Vec<3>                g() const { return X.element<4>().coeffs();                  }
 
   inline Eigen::Isometry3d isometry() const {
     Eigen::Isometry3d T;
@@ -343,19 +355,14 @@ PROFC_NODE("update")
   }
 
   inline Eigen::Isometry3d L2I_isometry() const {
-    return Config::getInstance().sensors.extrinsics.imu2baselink.inverse()
-           * Config::getInstance().sensors.extrinsics.lidar2baselink;
-  }
-
-  inline Eigen::Isometry3d L2baselink_isometry() const {
-    return isometry() * L2I_isometry();
+    return X.element<1>().isometry();
   }
 
 // Setters
   void quat(const Eigen::Quaterniond& in) { X.element<0>() = manif::SGal3d(p(), in, v(), t()); } 
-  void b_w (const Vec<3>& in)             { X.element<1>() = manif::R3d(in);                   }
-  void b_a (const Vec<3>& in)             { X.element<2>() = manif::R3d(in);                   }
-  void g   (const Vec<3>& in)             { X.element<3>() = manif::R3d(in);                   }
+  void b_w (const Vec<3>& in)             { X.element<2>() = manif::R3d(in);                   }
+  void b_a (const Vec<3>& in)             { X.element<3>() = manif::R3d(in);                   }
+  void g   (const Vec<3>& in)             { X.element<4>() = manif::R3d(in);                   }
 
 };
 
