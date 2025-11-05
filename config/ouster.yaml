@@ -32,12 +32,6 @@ sensors:
                     # between IMU and LiDAR (set to true if they are not properly in sync)
 
   extrinsics:
-    NED: true # North, East, Down convention for IMU coordinates (NEU by default)
-               # Iintial position and orientation of the robot is 
-               # imu2baselink * (NEU or NED), w.r.t to the world frame (NEU)
-               # This only flips the gravity sign, imu2baselink is the rotation
-               # that aligns (x, y) axes
-
     imu2baselink:
       t: [0., 0., 0.98] # (x, y, z) [meters]
       R: [-1., -5.5, 0.]  # roll, pitch, yaw [deg]
@@ -90,10 +84,10 @@ filters:
 
 
 IKFoM:  # Iterative Kalman Filter on Manifolds lib
-  max_iters: 3  # max num of iterations of the IESEKF
+  max_iters: 1  # max num of iterations of the IESEKF
   tolerance: 0.001                      
   lidar_noise: 0.001
-  estimate_extrinsics: true
+  estimate_extrinsics: false
 
   covariance:
     gyro: 6.01e-4        # [m/s^2]

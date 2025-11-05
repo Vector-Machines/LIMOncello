@@ -59,13 +59,10 @@ struct State {
 
   State() : stamp(-1.0) { 
     Config& cfg = Config::getInstance();
-    auto extrinsics = cfg.sensors.extrinsics;
-
+    
     // Set initial state
-    Vec<3> grav_vec(0., 0., extrinsics.gravity * (extrinsics.NED ? 1 : -1));
-    auto lidar2imu = Config::getInstance().sensors.extrinsics.imu2baselink.inverse()
-                     * Config::getInstance().sensors.extrinsics.lidar2baselink;
-
+    auto extrinsics = cfg.sensors.extrinsics;
+    auto lidar2imu = extrinsics.imu2baselink.inverse() * extrinsics.lidar2baselink;
                                                                 //                  Tangent (idx)
     X = BundleT(manif::SGal3d(extrinsics.imu2baselink.translation(),     //                    0
                               Eigen::Quaterniond(extrinsics.imu2baselink.linear()),         // 6
@@ -74,7 +71,8 @@ struct State {
                 manif::SE3d(lidar2imu),                         // isometry                   10
                 manif::R3d(cfg.sensors.intrinsics.gyro_bias),   // b_w                        16
                 manif::R3d(cfg.sensors.intrinsics.accel_bias),  // b_a                        19
-                manif::R3d(grav_vec));                          // g                          22
+                manif::R3d(Vec<3>::UnitZ()                      // g                          22
+                           * extrinsics.gravity));
 
     P.setIdentity();
     P *= cfg.ikfom.covariance.initial_cov;
@@ -150,7 +148,7 @@ PROFC_NODE("predict")
                                1.;
     // u.element<3>().coeffs() = n_{b_w} 
     // u.element<4>().coeffs() = n_{b_a}
-
+    
     return u;
   }
 

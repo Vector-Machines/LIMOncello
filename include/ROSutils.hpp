@@ -114,7 +114,7 @@ geometry_msgs::TransformStamped toTF(State& state) {
   geometry_msgs::TransformStamped transform_msg;
   transform_msg.header.stamp = ros::Time::now();
   transform_msg.header.frame_id = Config::getInstance().topics.frame_id;
-  transform_msg.child_frame_id = "odom";
+  transform_msg.child_frame_id = "base_link";
   transform_msg.transform = msg;
 
   return transform_msg;
@@ -176,8 +176,6 @@ void fill_config(Config& cfg, ros::NodeHandle& nh) {
     ).toRotationMatrix();
 
   cfg.sensors.extrinsics.lidar2baselink.linear() = R_lidar;
-
-  nh.getParam("sensors/extrinsics/NED", cfg.sensors.extrinsics.NED);
 
   nh.getParam("sensors/intrinsics/accel_bias", tmp);
   cfg.sensors.intrinsics.accel_bias = Eigen::Vector3d(tmp[0], tmp[1], tmp[2]);

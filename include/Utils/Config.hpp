@@ -58,7 +58,6 @@ struct Config {
   		Eigen::Isometry3d imu2baselink;
   		Eigen::Isometry3d lidar2baselink;
   		float gravity = 9.80665;
-		bool NED;
   	} extrinsics;
 
   	struct {

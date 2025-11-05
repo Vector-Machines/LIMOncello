@@ -96,7 +96,7 @@ PointTimeComp get_point_time_comp() {
       point_time_cmp = [](const PointT& p1, const PointT& p2) { return p1.time < p2.time; };
 
   } else if (cfg.sensors.lidar.type == 2 or cfg.sensors.lidar.type == 3) {
-    point_time_cmp = [](const PointT& p1, const PointT& p2) { return p1.timestamp > p2.timestamp; };
+    point_time_cmp = [](const PointT& p1, const PointT& p2) { return p1.timestamp < p2.timestamp; };
 
   } else {
     std::cout << "-------------------------------------------\n";

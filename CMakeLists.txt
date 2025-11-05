@@ -9,14 +9,9 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -pthread -fexceptions -O3 -lm -lblas -llapack")
 
-# Find Boost and TBB
+# Find Packages
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(TBB REQUIRED)
-
-# Include Boost directories
-include_directories(${Boost_INCLUDE_DIRS})
-
-# Find Eigen3 and PCL
 find_package(Eigen3 REQUIRED)
 find_package(PCL 1.8 REQUIRED)
 
@@ -36,6 +31,7 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIRS}
+  ${Boost_INCLUDE_DIRS}
 )
 
 # Catkin package configuration

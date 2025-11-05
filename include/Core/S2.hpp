@@ -48,9 +48,10 @@ namespace S2 {
 
 
   inline Matrix3x2d B(const Vector3d& x) {
-    bool NED = Config::getInstance().sensors.extrinsics.NED;
-    Vector3d   e_i  = Vector3d::UnitZ() * (NED ? -1. : 1.);
-    Matrix3x2d E_jk = Matrix3d::Identity().leftCols<2>() * (NED ? -1. : 1.);
+    // Seems that IKFoM's S2 formalization is for negative vectors
+    // as gravity is alwasy positive in State.hpp, B(x) is flipped
+    Vector3d   e_i  = Vector3d::UnitZ() * -1.;
+    Matrix3x2d E_jk = Matrix3d::Identity().leftCols<2>() * -1.;
 
     Matrix3x2d out;
 
