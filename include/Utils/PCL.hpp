@@ -53,19 +53,19 @@ PointTime point_time_func() {
 
   if (cfg.sensors.lidar.type == 0) { // OUSTER
     return cfg.sensors.lidar.end_of_sweep
-      ? [] (const PointT& p, const double& sweep_time) { return sweep_time - p.t * 1e-9f; }
-      : [] (const PointT& p, const double& sweep_time) { return sweep_time + p.t * 1e-9f; };
+      ? [] (const PointT& p, const double& sweep_time) { return sweep_time - p.t * 1e-9; }
+      : [] (const PointT& p, const double& sweep_time) { return sweep_time + p.t * 1e-9; };
 
   } else if (cfg.sensors.lidar.type == 1) { // VELODYNE
     return cfg.sensors.lidar.end_of_sweep
-      ? [] (const PointT& p, const double& sweep_time) { return sweep_time - p.time; }
-      : [] (const PointT& p, const double& sweep_time) { return sweep_time + p.time; };
+      ? [] (const PointT& p, const double& sweep_time) { return sweep_time - (double)p.time; }
+      : [] (const PointT& p, const double& sweep_time) { return sweep_time + (double)p.time; };
 
   } else if (cfg.sensors.lidar.type == 2) { // HESAI
     return [] (const PointT& p, const double& sweep_time) { return p.timestamp; };
 
   } else if (cfg.sensors.lidar.type == 3) { // LIVOX
-    return [] (const PointT& p, const double& sweep_time) { return p.timestamp * 1e-9f; };
+    return [] (const PointT& p, const double& sweep_time) { return p.timestamp * 1e-9; };
 
   } else {
     std::cout << "-------------------------------------------\n";
