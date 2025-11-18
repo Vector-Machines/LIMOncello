@@ -55,13 +55,13 @@ PointTime point_time_func() {
 
   if (cfg.sensors.lidar.type == 0) { // OUSTER
     return cfg.sensors.lidar.end_of_sweep
-      ? [] (const PointT& p, const double& sweep_time) { return sweep_time - p.t * 1e-9f; }
-      : [] (const PointT& p, const double& sweep_time) { return sweep_time + p.t * 1e-9f; };
+      ? [] (const PointT& p, const double& sweep_time) { return sweep_time - p.t * 1e-9; }
+      : [] (const PointT& p, const double& sweep_time) { return sweep_time + p.t * 1e-9; };
 
   } else if (cfg.sensors.lidar.type == 1) { // VELODYNE
     return cfg.sensors.lidar.end_of_sweep
-      ? [] (const PointT& p, const double& sweep_time) { return sweep_time - p.time; }
-      : [] (const PointT& p, const double& sweep_time) { return sweep_time + p.time; };
+      ? [] (const PointT& p, const double& sweep_time) { return sweep_time - (double)p.time; }
+      : [] (const PointT& p, const double& sweep_time) { return sweep_time + (double)p.time; };
 
   } else if (cfg.sensors.lidar.type == 2) { // HESAI
     return [] (const PointT& p, const double& sweep_time) { return p.timestamp; };
@@ -98,7 +98,7 @@ PointTimeComp get_point_time_comp() {
       point_time_cmp = [](const PointT& p1, const PointT& p2) { return p1.time < p2.time; };
 
   } else if (cfg.sensors.lidar.type == 2 or cfg.sensors.lidar.type == 3) {
-    point_time_cmp = [](const PointT& p1, const PointT& p2) { return p1.timestamp > p2.timestamp; };
+    point_time_cmp = [](const PointT& p1, const PointT& p2) { return p1.timestamp < p2.timestamp; };
 
   } else {
     std::cout << "-------------------------------------------\n";

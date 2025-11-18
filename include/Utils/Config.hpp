@@ -47,6 +47,7 @@ struct Config {
   	} imu;
 
   	struct {
+  		bool gravity_align;
   		bool gravity;
   		bool accel;
   		bool gyro;
@@ -54,12 +55,14 @@ struct Config {
   	} calibration;
 
   	bool time_offset;
-    float TAI_offset;
+  	float TAI_offset;
 
   	struct {
-  		Eigen::Affine3d imu2baselink_T;
-  		Eigen::Affine3d lidar2baselink_T;
-  		float gravity;
+  		Eigen::Isometry3d imu2baselink;
+  		Eigen::Isometry3d lidar2baselink;
+  		Eigen::Isometry3d imu2baselink_T;
+  		Eigen::Isometry3d lidar2baselink_T;
+  		float gravity = 9.80665;
   	} extrinsics;
 
   	struct {
@@ -72,30 +75,29 @@ struct Config {
 
   struct Filters {
     struct {
-    	Eigen::Vector4d leaf_size;
+      Eigen::Vector4d leaf_size;
     } voxel_grid;
 
     struct {
-    	bool active;
-    	float value;
+      bool active;
+      float value;
     } min_distance;
 
     struct {
-    	bool active;
-    	float value;
+      bool active;
+      Eigen::Vector3f min_pt;
+      Eigen::Vector3f max_pt;
+    } crop_box;
+
+    struct {
+      bool active;
+      float value;
     } fov;
 
     struct {
-			bool active;
-			int value;
+        bool active;
+        int value;
     } rate_sampling;
-
-	struct
-		{
-			bool active;
-			Eigen::Vector3f min_pt;
-			Eigen::Vector3f max_pt;
-		} crop_box;
 
   } filters;
 
@@ -104,12 +106,14 @@ struct Config {
   	int max_iters;
   	float tolerance;
   	float lidar_noise;
+	bool estimate_extrinsics;
 
   	struct {
   		float gyro;
   		float accel;
   		float bias_gyro;
   		float bias_accel;
+		float initial_cov;
   	} covariance;
 
   	struct {
@@ -120,14 +124,14 @@ struct Config {
   } ikfom;
 
   struct iOctree {
-    float min_extent;
-    int bucket_size;
-    bool downsample;
+	float min_extent;
+	int bucket_size;
+	bool downsample;
   } ioctree;
 
   static Config& getInstance() {
-    static Config* config = new Config();
-    return *config;
+	static Config* config = new Config();
+	return *config;
   }
 
  private:

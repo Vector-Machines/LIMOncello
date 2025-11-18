@@ -82,9 +82,12 @@ nav_msgs::msg::Odometry toROS(State& state) {
   out.pose.pose.position    = tf2::toMsg(state.p());
   out.pose.pose.orientation = tf2::toMsg(state.quat());
 
-  out.twist.twist.linear.x = state.v()(0);
-  out.twist.twist.linear.y = state.v()(1);
-  out.twist.twist.linear.z = state.v()(2);
+  Eigen::Vector3d v = state.R().transpose() * state.v(); 
+
+  // Twist
+  out.twist.twist.linear.x = v(0);
+  out.twist.twist.linear.y = v(1);
+  out.twist.twist.linear.z = v(2);
 
   out.twist.twist.angular.x = state.w(0) - state.b_w()(0);
   out.twist.twist.angular.y = state.w(1) - state.b_w()(1);
@@ -149,9 +152,10 @@ void fill_config(Config& cfg, rclcpp::Node* n) {
   n->get_parameter("sensors.lidar.end_of_sweep", cfg.sensors.lidar.end_of_sweep);
   n->get_parameter("sensors.imu.hz",             cfg.sensors.imu.hz);
   n->get_parameter("sensors.time_offset", cfg.sensors.time_offset);
-  n->get_parameter("sensors.TAI_offset",  cfg.sensors.TAI_offset);
+  n->get_parameter_or("sensors.TAI_offset",  cfg.sensors.TAI_offset, 0.0f);
 
-  n->get_parameter("sensors.calibration.gravity", cfg.sensors.calibration.gravity);
+  n->get_parameter("sensors.calibration.gravity_align", cfg.sensors.calibration.gravity_align);
+  n->get_parameter_or("sensors.calibration.gravity", cfg.sensors.calibration.gravity, false);
   n->get_parameter("sensors.calibration.accel",         cfg.sensors.calibration.accel);
   n->get_parameter("sensors.calibration.gyro",          cfg.sensors.calibration.gyro);
   n->get_parameter("sensors.calibration.time",          cfg.sensors.calibration.time);

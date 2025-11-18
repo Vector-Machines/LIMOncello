@@ -38,12 +38,10 @@ class Manager : public rclcpp::Node {
   charlie::Octree ioctree_;
   bool stop_ioctree_update_;
 
-
   // ROS
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr lidar_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr         imu_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr           stop_sub_;
-
 
   // Publishers
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_state;
@@ -56,9 +54,9 @@ class Manager : public rclcpp::Node {
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_raw;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_deskewed;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_downsampled;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_to_match;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_filtered_;
 
-
+  
 public:
   Manager() : Node("limoncello", 
                    rclcpp::NodeOptions()
@@ -74,9 +72,11 @@ public:
 
     state_.init();
 
-    imu_calibrated_ = not (cfg.sensors.calibration.gravity
+    imu_calibrated_ = not (cfg.sensors.calibration.gravity_align
+                           or cfg.sensors.calibration.gravity
                            or cfg.sensors.calibration.accel
-                           or cfg.sensors.calibration.gyro); 
+                           or cfg.sensors.calibration.gyro)
+                      or cfg.sensors.calibration.time <= 0.; 
 
     ioctree_.setBucketSize(cfg.ioctree.bucket_size);
     ioctree_.setDownsample(cfg.ioctree.downsample);
@@ -106,26 +106,23 @@ public:
                     std::bind(&Manager::stop_update_callback, this, std::placeholders::_1),
                     stop_opt);
 
-    pub_state       = this->create_publisher<nav_msgs::msg::Odometry>(cfg.topics.output.state, 10);
-    pub_frame       = this->create_publisher<sensor_msgs::msg::PointCloud2>(cfg.topics.output.frame, 10);
+    pub_state = this->create_publisher<nav_msgs::msg::Odometry>(cfg.topics.output.state, 10);
+    pub_frame = this->create_publisher<sensor_msgs::msg::PointCloud2>(cfg.topics.output.frame, 10);
 
-    pub_raw         = this->create_publisher<sensor_msgs::msg::PointCloud2>("debug/raw", 10);
-    pub_deskewed    = this->create_publisher<sensor_msgs::msg::PointCloud2>("debug/deskewed", 10);
-    pub_downsampled = this->create_publisher<sensor_msgs::msg::PointCloud2>("debug/downsampled", 10);
-    pub_to_match    = this->create_publisher<sensor_msgs::msg::PointCloud2>("debug/to_match", 10);
+    // TF Broadcaster
+    tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(this);
 
-    // Initialize TF broadcaster
-    tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
-
-    auto param_names = this->list_parameters({}, 100).names;
-    auto params = this->get_parameters(param_names);
-    for (size_t i = 0; i < param_names.size(); i++) {
-        RCLCPP_INFO(this->get_logger(), "Parameter: %s = %s",
-                    param_names[i].c_str(),
-                    params[i].value_to_string().c_str());
+    // Debug only
+    if (cfg.debug) {
+      pub_raw         = this->create_publisher<sensor_msgs::msg::PointCloud2>("debug/raw", 10);
+      pub_deskewed    = this->create_publisher<sensor_msgs::msg::PointCloud2>("debug/deskewed", 10);
+      pub_downsampled = this->create_publisher<sensor_msgs::msg::PointCloud2>("debug/downsampled", 10);
+      pub_filtered_   = this->create_publisher<sensor_msgs::msg::PointCloud2>("debug/filtered", 10);
     }
-  }
+  };
   
+  ~Manager() = default;
+
 
   void imu_callback(const sensor_msgs::msg::Imu::ConstSharedPtr& msg) {
 
@@ -142,7 +139,6 @@ public:
       static int N(0);
       static Eigen::Vector3d gyro_avg(0., 0., 0.);
       static Eigen::Vector3d accel_avg(0., 0., 0.);
-      static Eigen::Vector3d grav_vec(0., 0., cfg.sensors.extrinsics.gravity);
 
       if ((imu.stamp - first_imu_stamp_) < cfg.sensors.calibration.time) {
         gyro_avg  += imu.ang_vel;
@@ -153,16 +149,21 @@ public:
         gyro_avg /= N;
         accel_avg /= N;
 
-        if (cfg.sensors.calibration.gravity) {
-          grav_vec = accel_avg.normalized() * abs(cfg.sensors.extrinsics.gravity);
-          state_.g(-grav_vec);
+        if (cfg.sensors.calibration.gravity_align) {
+          Eigen::Vector3d g_m = (accel_avg - state_.b_a()).normalized(); 
+                          g_m *= cfg.sensors.extrinsics.gravity;
+          
+          Eigen::Vector3d g_b = state_.quat().conjugate() * state_.g();
+          Eigen::Quaterniond dq = Eigen::Quaterniond::FromTwoVectors(g_b, g_m);
+
+          state_.quat((state_.quat() * dq).normalized());
         }
         
         if (cfg.sensors.calibration.gyro)
           state_.b_w(gyro_avg);
 
         if (cfg.sensors.calibration.accel)
-          state_.b_a(accel_avg - grav_vec);
+          state_.b_a(accel_avg - state_.R().transpose()*state_.g());
 
         imu_calibrated_ = true;
       }
@@ -170,30 +171,14 @@ public:
     } else {
       double dt = imu.stamp - prev_imu_.stamp;
 
-      // Handle timestamp issues gracefully
-      if (dt < 0) {
-        // Allow small negative dt (up to 1ms) for minor timestamp discrepancies
-        if (dt > -0.001) {
-          RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, 
-                               "Small timestamp discrepancy detected (dt=%.6fs), continuing with nominal rate", dt);
-          dt = 1.0 / cfg.sensors.imu.hz;
-        } else {
-          RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, 
-                               "Large timestamp jump detected (dt=%.6fs). Current: %.6f, Previous: %.6f, using nominal rate", 
-                               dt, imu.stamp, prev_imu_.stamp);
-          dt = 1.0 / cfg.sensors.imu.hz;
-        }
-      }
+      if (dt < 0)
+        RCLCPP_ERROR(this->get_logger(), "IMU timestamps not correct");
 
-      // If time gap is too large (e.g., messages dropped), use nominal rate
-      if (dt > 0.1) { // 10Hz threshold
-        dt = 1.0 / cfg.sensors.imu.hz;
-      }
-
-      imu = imu2baselink(imu, dt);
+      dt = (dt < 0 or dt >= imu.stamp) ? 1./cfg.sensors.imu.hz : dt;
 
       // Correct acceleration
       imu.lin_accel = cfg.sensors.intrinsics.sm * imu.lin_accel;
+      prev_imu_ = imu;
 
       mtx_state_.lock();
         state_.predict(imu, dt);
@@ -206,42 +191,34 @@ public:
       cv_prop_stamp_.notify_one();
 
       pub_state->publish(toROS(state_));
-      
-      if (cfg.frames.tf_pub) {
+      if (cfg.frames.tf_pub)
         tf_broadcaster_->sendTransform(toTF(state_));
-      }
     }
-
-    // Always update prev_imu_ with the current message for the next callback
-    prev_imu_ = imu;
   }
 
 
   void lidar_callback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg) {
-PROFC_NODE("LiDAR Callback")
-
     Config& cfg = Config::getInstance();
 
+    if (not imu_calibrated_)
+      return;
+    
+    if (state_buffer_.empty()) {
+      RCLCPP_ERROR(this->get_logger(), "[LIMONCELLO] No IMUs received");
+      return;
+    }
+    
     PointCloudT::Ptr raw(new PointCloudT);
     fromROS(*msg, *raw);
 
     if (raw->points.empty()) {
-      RCLCPP_ERROR(get_logger(), "[LIMONCELLO] Raw PointCloud is empty!");
-      return;
-    }
-
-    if (not imu_calibrated_)
-      return;
-
-    if (state_buffer_.empty()) {
-      RCLCPP_ERROR(get_logger(), "[LIMONCELLO] No IMUs received");
+      RCLCPP_ERROR(this->get_logger(), "[LIMONCELLO] Raw PointCloud is empty!");
       return;
     }
 
     PointTime point_time = point_time_func();
-    double sweep_time = rclcpp::Time(msg->header.stamp).seconds() 
-                        + cfg.sensors.TAI_offset;
-
+    double sweep_time = rclcpp::Time(msg->header.stamp).seconds();
+    
     double offset = 0.0;
     if (cfg.sensors.time_offset) { // automatic sync (not precise!)
       offset = state_.stamp - point_time(raw->points.back(), sweep_time) - 1.e-4; 
@@ -271,8 +248,8 @@ PROFC_NODE("LiDAR Callback")
   mtx_buffer_.unlock();
 
     if (start_stamp < interpolated.front().stamp or interpolated.size() == 0) {
-      // every points needs to have a state associated not in the past
-      RCLCPP_WARN(get_logger(), "Not enough interpolated states for deskewing pointcloud \n");
+      // every point needs to have a state associated not in the past
+      RCLCPP_WARN(this->get_logger(), "Not enough interpolated states for deskewing pointcloud \n");
       return;
     }
 
@@ -280,16 +257,17 @@ PROFC_NODE("LiDAR Callback")
 
     PointCloudT::Ptr deskewed    = deskew(raw, state_, interpolated, offset, sweep_time);
     PointCloudT::Ptr downsampled = voxel_grid(deskewed);
-    PointCloudT::Ptr processed   = process(downsampled);
+    PointCloudT::Ptr filtered    = filter(downsampled, state_.isometry() * state_.L2I_isometry());
 
-    if (processed->points.empty()) {
-      RCLCPP_ERROR(get_logger(), "[LIMONCELLO] Processed & downsampled cloud is empty!");
+    if (filtered->points.empty()) {
+      RCLCPP_ERROR(this->get_logger(), "[LIMONCELLO] Filtered & downsampled cloud is empty!");
+      mtx_state_.unlock();
       return;
     }
 
-    state_.update(processed, ioctree_);
-    Eigen::Affine3f T = (state_.affine3d() * state_.I2L_affine3d()).cast<float>();
+    state_.update(filtered, ioctree_);
 
+    Eigen::Isometry3f T = (state_.isometry() * state_.L2I_isometry()).cast<float>();
   mtx_state_.unlock();
 
     PointCloudT::Ptr global(new PointCloudT);
@@ -297,22 +275,23 @@ PROFC_NODE("LiDAR Callback")
     deskewed->height = 1;                     
     pcl::transformPointCloud(*deskewed, *global, T);
 
-    processed->height = 1;                     
-    processed->width  = static_cast<uint32_t>(processed->points.size());
-    pcl::transformPointCloud(*processed, *processed, T);
+    PointCloudT::Ptr to_save(new PointCloudT);
+    pcl::transformPointCloud(*filtered, *to_save, T);
 
     // Publish
-    pub_frame->publish(toROS(processed));
+    pub_state->publish(toROS(state_));
+    pub_frame->publish(toROS(global));
 
     if (cfg.debug) {
       pub_raw->publish(toROS(raw));
       pub_deskewed->publish(toROS(deskewed));
       pub_downsampled->publish(toROS(downsampled));
-      pub_to_match->publish(toROS(processed));
+      pub_filtered_->publish(toROS(to_save));
     }
 
     // Update map
-    ioctree_.update(processed->points);
+    if (not stop_ioctree_update_)
+      ioctree_.update(to_save->points);
 
     if (cfg.verbose)
       PROFC_PRINT()
@@ -333,14 +312,13 @@ int main(int argc, char** argv) {
   
   rclcpp::init(argc, argv);
 
-  rclcpp::Node::SharedPtr manager = std::make_shared<Manager>();
+  auto manager = std::make_shared<Manager>();
 
-  rclcpp::executors::MultiThreadedExecutor executor; // by default using all available cores
+  rclcpp::executors::MultiThreadedExecutor executor;
   executor.add_node(manager);
   executor.spin();
 
   rclcpp::shutdown();
-
 
   return 0;
 }
